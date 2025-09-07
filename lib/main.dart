@@ -1,6 +1,46 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:operation_sunrise/firebase_options.dart';
+import 'package:operation_sunrise/game_screen.dart';
+import 'package:operation_sunrise/level_video_player.dart';
+import 'package:operation_sunrise/video_player_screen.dart';
 
-void main() {
+Future<void> main() async {
+  // 2. Ensure that all Flutter bindings are initialized
+  WidgetsFlutterBinding.ensureInitialized();
+  // 3. Initialize Firebase
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+  );
+
+  // Activate App Check with the new providers
+  await FirebaseAppCheck.instance.activate(
+    // For Android, Play Integrity is the recommended provider
+    androidProvider: AndroidProvider.debug,
+    // For iOS, App Attest is the recommended provider
+    appleProvider: AppleProvider.appAttest,
+  );
+
+  if (FirebaseAuth.instance.currentUser == null) {
+    try {
+      // If not, sign them in anonymously
+      print("No user found. Signing in anonymously...");
+      await FirebaseAuth.instance.signInAnonymously();
+      print("Sign-in successful.");
+    } catch (e) {
+      // Handle errors (e.g., no network connection on first launch)
+      print("Error signing in anonymously: $e");
+      // In a real app, you might want to show an error screen here
+    }
+  } else {
+    print("Existing user found.");
+  }
+
   runApp(const MyApp());
 }
 
@@ -85,32 +125,65 @@ class _MyHomePageState extends State<MyHomePage> {
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('levels')
+            .orderBy('levelNumber')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text('No levels found.'));
+          }
+
+          var levelDocs = snapshot.data!.docs;
+
+          return ListView.builder(
+            itemCount: levelDocs.length,
+            itemBuilder: (context, index) {
+              var levelData = levelDocs[index].data() as Map<String, dynamic>;
+              final String? videoPath = levelData['path'];
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    child: Text(levelData['levelNumber'].toString()),
+                  ),
+                  title: Text(levelData['name'] ?? 'Unnamed Level'),
+                  subtitle: Text(
+                    'Difficulty: ${levelData['difficulty'] ?? 'N/A'}',
+                  ),
+                  trailing: const Icon(Icons.play_circle_outline),
+                  onTap: () {
+                    if (videoPath != null) {
+                      // Navigate to the new GameScreen
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => GameScreen(
+                            videoPath: videoPath,
+                            levelName:
+                                levelData['name'] ??
+                                'A Level', // Pass the level name
+                          ),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('No video available for this level.'),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              );
+            },
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _incrementCounter,

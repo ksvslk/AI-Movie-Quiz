@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "243022700959",
+    "project_id": "operation-sunrise",
+    "storage_bucket": "operation-sunrise.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:243022700959:android:0b9865d55d1ea800519daa",
+        "android_client_info": {
+          "package_name": "com.indest.aimoviequiz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbhJDeHfLHZSsa_I8HPbBgo3xmnfnwxqg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

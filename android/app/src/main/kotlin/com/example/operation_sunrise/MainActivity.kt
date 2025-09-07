@@ -1,4 +1,4 @@
-package com.example.operation_sunrise
+package com.indest.aimoviequiz
 
 import io.flutter.embedding.android.FlutterActivity
 
