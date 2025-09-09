@@ -1,4 +1,5 @@
 // game_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:operation_sunrise/concentric_letter_circle.dart';
 import 'dart:math';
@@ -19,7 +20,7 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> {
-  final String _displaySolution = 'THE LORD OF THE RINGS: THE FELLOWSHIP OF THE RING';
+  final String _displaySolution = 'The Godfather Part II';
   final List<String> _userInput = [];
 
   void _onLetterTapped(String letter) {
@@ -45,77 +46,65 @@ class _GameScreenState extends State<GameScreen> {
     });
   }
 
-  /// Calculates the largest possible box size that allows the solution to fit in maxLines.
-  double _calculateOptimalBoxSize({
+  /// Calculates the single optimal box size that allows all words to fit
+  /// within a maximum number of lines.
+  double _calculateOptimalBoxSizeForWords({
     required double availableWidth,
-    required String solution,
+    required List<String> words,
     required double spacing,
     int maxLines = 3,
   }) {
-    const double maxBoxSize = 40.0; // The largest size we want
-    const double minBoxSize = 10.0; // The smallest size we'll allow
-    const double step = 0.5;      // How much to shrink the size in each iteration
+    const double maxBoxSize = 30.0;
+    const double minBoxSize = 10.0;
+    const double step = 0.5;
 
     for (double currentSize = maxBoxSize; currentSize >= minBoxSize; currentSize -= step) {
       int lines = 1;
       double currentLineWidth = 0.0;
-      final double spaceCharWidth = currentSize * 0.4; // Width of a space between words
+      final double spaceWidth = currentSize * 0.4;
 
-      for (int i = 0; i < solution.length; i++) {
-        final char = solution[i];
-        final isSpace = char == ' ';
-        final itemWidth = isSpace ? spaceCharWidth : currentSize;
-        
-        // If it's not the first item on the line, add spacing
-        final double widthWithSpacing = (currentLineWidth == 0.0) ? itemWidth : itemWidth + spacing;
+      for (final word in words) {
+        final double wordWidth = (word.length * currentSize) + (max(0, word.length - 1) * spacing);
 
-        if (currentLineWidth + widthWithSpacing > availableWidth) {
+        // This check handles cases where a single word is too long for the screen
+        if (wordWidth > availableWidth) {
+          lines = maxLines + 1; // Mark as invalid
+          break;
+        }
+
+        final double prospectiveWidth = (currentLineWidth == 0.0) ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
+
+        if (prospectiveWidth > availableWidth) {
           lines++;
-          currentLineWidth = itemWidth; // Start a new line
+          currentLineWidth = wordWidth; // Start a new line
         } else {
-          currentLineWidth += widthWithSpacing;
+          currentLineWidth = prospectiveWidth;
         }
       }
 
-      // If it fits within the max lines, we found our optimal size
       if (lines <= maxLines) {
-        return currentSize;
+        return currentSize; // This is the largest size that fits, so it's optimal.
       }
     }
-    
-    // If even the smallest size doesn't fit, return the smallest size as a fallback.
-    return minBoxSize;
+    return minBoxSize; // Fallback if no size fits
   }
 
-  Widget _buildSolutionField(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    const double horizontalPadding = 16.0;
-    const double spacing = 6.0;
-    const double runSpacing = 8.0;
+  /// Builds a single line (a Row widget) of letter boxes.
+  Widget _buildLineWidget({
+    required List<String> words,
+    required double boxSize,
+    required double spacing,
+    required List<String> userInput,
+    required int startIndex,
+  }) {
+    List<Widget> wordWidgets = [];
+    int currentInputIndex = startIndex;
 
-    // 1. Calculate the available width for the Wrap widget
-    final double availableWidth = screenWidth - (horizontalPadding * 2);
-
-    // 2. Proactively calculate the best box size to fit within 3 lines
-    final double boxSize = _calculateOptimalBoxSize(
-      availableWidth: availableWidth,
-      solution: _displaySolution,
-      spacing: spacing,
-      maxLines: 3,
-    );
-
-    List<Widget> solutionWidgets = [];
-    int userInputIndex = 0;
-
-    for (int i = 0; i < _displaySolution.length; i++) {
-      String char = _displaySolution[i];
-
-      if (char == ' ') {
-        solutionWidgets.add(SizedBox(width: boxSize * 0.4));
-      } else {
-        bool isFilled = userInputIndex < _userInput.length;
-        
-        solutionWidgets.add(
+    for (int i = 0; i < words.length; i++) {
+      final String word = words[i];
+      for (int j = 0; j < word.length; j++) {
+        bool isFilled = currentInputIndex < userInput.length;
+        wordWidgets.add(
           Container(
             width: boxSize,
             height: boxSize,
@@ -135,7 +124,7 @@ class _GameScreenState extends State<GameScreen> {
                 ),
             alignment: Alignment.center,
             child: Text(
-              isFilled ? _userInput[userInputIndex] : '',
+              isFilled ? userInput[currentInputIndex] : '',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: boxSize * 0.6,
@@ -144,30 +133,111 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
         );
-        userInputIndex++;
+        currentInputIndex++;
+
+        if (j < word.length - 1) {
+          wordWidgets.add(SizedBox(width: spacing));
+        }
+      }
+
+      if (i < words.length - 1) {
+        wordWidgets.add(SizedBox(width: boxSize * 0.4));
       }
     }
-    
-    // We no longer need the Container with constraints.
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: wordWidgets,
+    );
+  }
+
+  /// Lays out the solution field using a single, uniform box size for all lines.
+  Widget _buildSolutionField(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    const double horizontalPadding = 16.0;
+    final double availableWidth = screenWidth - (horizontalPadding * 2);
+    const double spacing = 5.0;
+    const double runSpacing = 8.0;
+
+    final List<String> words = _displaySolution.split(' ');
+
+    // 1. Calculate the single optimal size for the entire layout first.
+    final double boxSize = _calculateOptimalBoxSizeForWords(
+      availableWidth: availableWidth,
+      words: words,
+      spacing: spacing,
+      maxLines: 3,
+    );
+
+    // 2. Use this single 'boxSize' to lay out the lines.
+    final List<Widget> lineWidgets = [];
+    int processedCharCount = 0;
+    List<String> currentLineWords = [];
+    double currentLineWidth = 0;
+    final double spaceWidth = boxSize * 0.4;
+
+    for (final String word in words) {
+      final double wordWidth = (word.length * boxSize) + (max(0, word.length - 1) * spacing);
+      final double prospectiveWidth = (currentLineWords.isEmpty) ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
+
+      if (currentLineWords.isNotEmpty && prospectiveWidth > availableWidth) {
+        // Line is full. Build the widget using the uniform boxSize.
+        lineWidgets.add(
+          _buildLineWidget(
+            words: currentLineWords,
+            boxSize: boxSize,
+            spacing: spacing,
+            userInput: _userInput,
+            startIndex: processedCharCount,
+          ),
+        );
+        processedCharCount += currentLineWords.join().length;
+
+        // Start a new line.
+        currentLineWords = [word];
+        currentLineWidth = wordWidth;
+      } else {
+        // Word fits. Add it to the current line.
+        currentLineWords.add(word);
+        currentLineWidth = prospectiveWidth;
+      }
+    }
+
+    // Add the final line after the loop finishes.
+    if (currentLineWords.isNotEmpty) {
+      lineWidgets.add(
+        _buildLineWidget(
+          words: currentLineWords,
+          boxSize: boxSize,
+          spacing: spacing,
+          userInput: _userInput,
+          startIndex: processedCharCount,
+        ),
+      );
+    }
+
+    // The final widget is a Column of Rows.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: horizontalPadding),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        runSpacing: runSpacing,
-        spacing: spacing,
-        children: solutionWidgets,
+      child: Column(
+        children: [
+          for (int i = 0; i < lineWidgets.length; i++) ...[
+            lineWidgets[i],
+            if (i < lineWidgets.length - 1) SizedBox(height: runSpacing),
+          ],
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // ... The rest of your build method remains unchanged ...
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: Text(widget.levelName),
+        elevation: 0,
+        title: Text(widget.levelName, style: const TextStyle(color: Colors.white70)),
+        iconTheme: const IconThemeData(color: Colors.white70),
       ),
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -189,7 +259,10 @@ class _GameScreenState extends State<GameScreen> {
                   child: ConcentricLetterCircle(
                     onLetterTapped: _onLetterTapped,
                     onBackspaceTapped: _onBackspaceTapped,
-                    onClearAllTapped: _onClearAllTapped, onShiftTapped: () { print("aa"); }, onSymbolsTapped: () { print("bb"); }, onSpaceTapped: () { print("cc"); },
+                    onClearAllTapped: _onClearAllTapped, 
+                    onShiftTapped: () { /* Placeholder */ }, 
+                    onSymbolsTapped: () { /* Placeholder */ }, 
+                    onSpaceTapped: () { /* Placeholder */ },
                   ),
                 ),
               ),
