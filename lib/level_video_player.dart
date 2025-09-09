@@ -41,12 +41,14 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> {
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController,
         autoPlay: true,
-        looping: true,
+        looping: false,
         allowFullScreen: false,
         allowPlaybackSpeedChanging: false,
         showOptions: false,
         showControls: true,
         showControlsOnInitialize: false,
+      
+        
         // You can add many other customizations here
         // aspectRatio: 16 / 9,
         // placeholder: const Center(child: CircularProgressIndicator()),

@@ -1,157 +1,374 @@
 // concentric_letter_circle.dart
 
-// ConcentricLetterCircle with gap-filling logic
+// Final version with correct text orientation for all arc sections.
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'package:flutter/services.dart';
 
-import 'package:operation_sunrise/arc_button_controller.dart';
+// A helper class to hold the results of our layout calculation.
+class _LayoutSolution {
+  final List<int> seatsPerRing;
+  final double buttonSize;
+  _LayoutSolution(this.seatsPerRing, this.buttonSize);
+}
+
+// ~~~ WIDGET 1: The Main ConcentricLetterCircle ~~~
 
 class ConcentricLetterCircle extends StatelessWidget {
   final Function(String) onLetterTapped;
-  final double letterButtonSize;
+  final VoidCallback onBackspaceTapped;
+  final VoidCallback onClearAllTapped;
+  final VoidCallback onShiftTapped;
+  final VoidCallback onSymbolsTapped;
+  final VoidCallback onSpaceTapped;
 
-  final List<String> _alphabet = List.generate(39, (index) => String.fromCharCode('A'.codeUnitAt(0) + index));
+  static const String _backspaceChar = '\u232B';
+
+  final List<String> _characterSet = [
+    'X', 'Q', 'Z', 'K', 'V', 'P', 'B', 'G', 'Y', 'F', 'M', 'C',
+    ':', "'", '-', ',', '5', '4', '3', '2', '1', '0',
+    'L', 'D', 'R', 'H', 'S', 'N', 'I', 'O', 'A', 'T', 'E', _backspaceChar,
+  ];
 
   ConcentricLetterCircle({
     super.key,
     required this.onLetterTapped,
-    this.letterButtonSize = 40.0,
+    required this.onBackspaceTapped,
+    required this.onClearAllTapped,
+    required this.onShiftTapped,
+    required this.onSymbolsTapped,
+    required this.onSpaceTapped,
   });
+
+  _LayoutSolution _findOptimalLayout(double maxRadius, int characterCount) {
+    _LayoutSolution bestSolution = _LayoutSolution([], 0.0);
+    const double minPadding = 4.0;
+
+    for (int outerRingSeats = 22; outerRingSeats >= 10; outerRingSeats--) {
+      double sinVal = sin(pi / outerRingSeats);
+      double candidateButtonSize = (2 * maxRadius * sinVal - minPadding) / (1 + sinVal);
+      if (candidateButtonSize < 15) continue;
+      List<int> ringCapacities = [];
+      int totalCapacity = 0;
+      double nextAvailableRadius = maxRadius;
+      while (nextAvailableRadius >= candidateButtonSize) {
+        double currentRingCenterRadius = nextAvailableRadius - candidateButtonSize / 2;
+        if (currentRingCenterRadius <= 0) break;
+        double circumference = 2 * pi * currentRingCenterRadius;
+        int seatsInThisRing = (circumference / (candidateButtonSize + minPadding)).floor();
+        if (seatsInThisRing < 3) break;
+        ringCapacities.add(seatsInThisRing);
+        totalCapacity += seatsInThisRing;
+        nextAvailableRadius -= (candidateButtonSize + minPadding);
+      }
+      if (totalCapacity >= characterCount && candidateButtonSize > bestSolution.buttonSize) {
+        bestSolution = _LayoutSolution(ringCapacities, candidateButtonSize);
+      }
+    }
+    return bestSolution;
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        const double maxDiameter = 500.0;
+        final double effectiveDiameter = min(maxDiameter, min(constraints.maxWidth, constraints.maxHeight));
+        if (effectiveDiameter <= 0) return const SizedBox.shrink();
+
         final List<Widget> allLetterWidgets = [];
-        int alphabetIndex = 0;
+        int characterIndex = 0;
         
-        // --- MODIFICATION START ---
-
-        // Define constants for the outer ring containing the arcs.
-        const double arcStrokeWidth = 30.0; // As defined in ArcButtonPainter
+        const double arcStrokeWidth = 35.0;
         const double desiredPadding = 4.0;
+        final double totalAvailableRadius = effectiveDiameter / 2;
 
-        // Calculate the total radius available from the parent widget.
-        final double totalAvailableRadius = min(constraints.maxWidth, constraints.maxHeight) / 2;
+        final double arcRingInnerRadius = totalAvailableRadius - arcStrokeWidth;
+        final double maxRadiusForLetters = arcRingInnerRadius - desiredPadding;
+        
+        final _LayoutSolution solution = _findOptimalLayout(maxRadiusForLetters, _characterSet.length);
+        final List<int> ringCapacities = solution.seatsPerRing;
+        final double uniformButtonSize = solution.buttonSize;
+        
+        if (ringCapacities.isEmpty || uniformButtonSize <= 0) return const SizedBox.shrink();
 
-        // Reserve space for the arcs and padding by subtracting it from the total available radius.
-        // The space needed is the full thickness of the arc plus the padding.
-        final double maxRadius = totalAvailableRadius - arcStrokeWidth - desiredPadding;
+        allLetterWidgets.add(
+          ArcButtonController(
+            radius: totalAvailableRadius,
+            strokeWidth: arcStrokeWidth,
+            onShiftTapped: onShiftTapped,
+            onSymbolsTapped: onSymbolsTapped,
+            onSpaceTapped: onSpaceTapped,
+          ),
+        );
+        
+        double nextAvailableRadius = maxRadiusForLetters;
 
-        // If there's no space for the letters after reserving space for the arcs, build nothing.
-        if (maxRadius <= 0) return const SizedBox.shrink();
+        for (int i = 0; i < ringCapacities.length; i++) {
+          final int capacityOfThisRing = ringCapacities[i];
+          final int remainingChars = _characterSet.length - characterIndex;
+          final int numSeatsOnThisLayer = min(capacityOfThisRing, remainingChars);
 
-        // --- MODIFICATION END ---
+          if (numSeatsOnThisLayer == 0) break;
 
-        for (int layer = 0; layer < 5; layer++) {
-          final double layerPadding = letterButtonSize * 0.1; 
-          // The radius for letters is now based on the new, smaller maxRadius.
-          final double currentRadius = maxRadius - (letterButtonSize / 2) - (layer * (letterButtonSize + layerPadding));
+          final double currentRadius = nextAvailableRadius - (uniformButtonSize / 2);
+          final double anglePerLetter = (2 * pi) / numSeatsOnThisLayer;
+          final double angleOffset = (i % 2 != 0) ? 0.0 : anglePerLetter / 2;
 
-          if (currentRadius < letterButtonSize / 2) break;
-
-          // --- NEW "GAP-FILLING" LOGIC ---
-          // 1. Define the absolute minimum padding you find acceptable.
-          const double minimumPadding = 2.0; 
-          
-          // 2. Calculate the circumference and how many letters can fit with that minimal padding.
-          final double circumference = 2 * pi * currentRadius;
-          final int maxLettersOnThisLayer = (circumference / (letterButtonSize + minimumPadding)).floor();
-          
-          if (maxLettersOnThisLayer <= 0) continue;
-
-          // 3. This is the key: we use maxLettersOnThisLayer to calculate the *actual* angle
-          // for perfect distribution. This divides the full 360 degrees by the number
-          // of items, ensuring no large gaps are left at the end.
-          final double anglePerLetter = (2 * pi) / maxLettersOnThisLayer;
-          // --- END OF NEW LOGIC ---
-
-          final double angleOffset = (layer % 2 == 0) ? 0.0 : anglePerLetter / 2;
-
-          for (int i = 0; i < maxLettersOnThisLayer; i++) {
-            if (alphabetIndex >= _alphabet.length) break;
-
-            final String letter = _alphabet[alphabetIndex];
-            // Use the newly calculated angle for precise, even placement
-            final double angle = angleOffset + (i * anglePerLetter);
+          for (int j = 0; j < numSeatsOnThisLayer; j++) {
+            final String letter = _characterSet[characterIndex];
+            final double angle = angleOffset + (j * anglePerLetter);
             final double x = cos(angle) * currentRadius;
             final double y = sin(angle) * currentRadius;
-
+            
             allLetterWidgets.add(
               Transform.translate(
                 offset: Offset(x, y),
-                child: Material(
-                  color: Colors.orangeAccent,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    onTap: () => onLetterTapped(letter),
-                    customBorder: const CircleBorder(),
-                    child: Container(
-                      width: letterButtonSize,
-                      height: letterButtonSize,
-                      alignment: Alignment.center,
-                      child: Text(
-                        letter,
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: letterButtonSize * 0.6,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
+                child: _LetterCircleButton(
+                  letter: letter,
+                  size: uniformButtonSize,
+                  onLetterTapped: onLetterTapped,
+                  onBackspaceTapped: onBackspaceTapped,
                 ),
               ),
             );
-            alphabetIndex++;
+            characterIndex++;
           }
-          if (alphabetIndex >= _alphabet.length) break;
+          const double minPadding = 4.0;
+          nextAvailableRadius -= (uniformButtonSize + minPadding);
         }
-
-        if (alphabetIndex < _alphabet.length) {
-          final String centerLetter = _alphabet[alphabetIndex];
-          allLetterWidgets.add(
-            Material(
-         color: Colors.orangeAccent,
-              shape: const CircleBorder(),
-              child: InkWell(
-                onTap: () => onLetterTapped(centerLetter),
-                customBorder: const CircleBorder(),
-                child: Container(
-                  width: letterButtonSize,
-                  height: letterButtonSize,
-                  alignment: Alignment.center,
-                  child: Text(
-                    centerLetter,
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: letterButtonSize * 0.6,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
+        
+        return Center(
+          child: SizedBox(
+            width: effectiveDiameter,
+            height: effectiveDiameter,
+            child: Container(
+              decoration: const BoxDecoration(shape: BoxShape.circle),
+              child: Stack(alignment: Alignment.center, children: allLetterWidgets),
             ),
-          );
-        }
-        
-        // Calculate the arc radius to place it in the reserved space.
-        // Its center is outside the letter area (maxRadius) by the padding amount plus half its own thickness.
-        final arcButtonRadius = maxRadius + desiredPadding + (arcStrokeWidth / 2);
-        
-        allLetterWidgets.add(
-          ArcButtonController(radius: arcButtonRadius),
-        );
-        return Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: allLetterWidgets,
           ),
         );
       },
     );
   }
+}
+
+// ~~~ WIDGET 2: A Stateless Button with InkWell Feedback ~~~
+
+class _LetterCircleButton extends StatelessWidget {
+  final String letter;
+  final double size;
+  final Function(String) onLetterTapped;
+  final VoidCallback onBackspaceTapped;
+  static const String _backspaceChar = '\u232B';
+
+  const _LetterCircleButton({
+    required this.letter,
+    required this.size,
+    required this.onLetterTapped,
+    required this.onBackspaceTapped,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isBackspace = letter == _backspaceChar;
+    
+    final Color seatBackColor = isBackspace ? Colors.red.shade800 : Colors.redAccent.shade400;
+    final Color seatBaseColor = isBackspace ? Colors.red.shade900.withOpacity(0.8) : Colors.redAccent;
+    final Color armrestColor = isBackspace ? Colors.red.shade900 : Colors.redAccent.shade700;
+
+    final seatBackDecoration = BoxDecoration(
+      color: seatBackColor,
+      border: Border(bottom: BorderSide(color: Colors.black.withOpacity(0.5), width: 0.1)),
+    );
+    final seatBaseDecoration = BoxDecoration(color: seatBaseColor);
+    final armrestDecoration = BoxDecoration(color: armrestColor);
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.45),
+        child: Material(
+          color: seatBaseColor,
+          elevation: 2.0,
+          shadowColor: Colors.black.withOpacity(0.5),
+          child: InkWell(
+            highlightColor: Colors.white.withOpacity(0.25),
+            splashColor: Colors.white.withOpacity(0.2),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              if (isBackspace) {
+                onBackspaceTapped();
+              } else {
+                onLetterTapped(letter);
+              }
+            },
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Row(children: [
+                  SizedBox(width: size * 0.15, child: Column(children: [Expanded(flex: 7, child: Container(decoration: armrestDecoration)), Expanded(flex: 2, child: Container())])),
+                  Expanded(child: Column(children: [Expanded(flex: 7, child: Container(decoration: seatBackDecoration)), Expanded(flex: 2, child: Container())])),
+                  SizedBox(width: size * 0.15, child: Column(children: [Expanded(flex: 7, child: Container(decoration: armrestDecoration)), Expanded(flex: 2, child: Container())])),
+                ]),
+                if (isBackspace)
+                  Icon(Icons.backspace_outlined, color: Colors.white70, size: size * 0.5)
+                else
+                  Text(letter, style: TextStyle(color: Colors.white, fontSize: size * 0.55, fontWeight: FontWeight.bold, shadows: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 2, offset: const Offset(0, 1))]),),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+// ~~~ WIDGET 3: The Arc Button Controller ~~~
+class ArcButtonController extends StatelessWidget {
+  final double radius;
+  final double strokeWidth;
+  final VoidCallback onShiftTapped;
+  final VoidCallback onSymbolsTapped;
+  final VoidCallback onSpaceTapped;
+
+  const ArcButtonController({
+    Key? key,
+    required this.radius,
+    required this.strokeWidth,
+    required this.onShiftTapped,
+    required this.onSymbolsTapped,
+    required this.onSpaceTapped,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (details) {
+        final tapPosition = details.localPosition;
+        final center = Offset(radius, radius);
+        final dx = tapPosition.dx - center.dx;
+        final dy = tapPosition.dy - center.dy;
+        
+        var angle = atan2(dy, dx); 
+        if (angle < 0) angle += 2 * pi;
+
+        final angleDeg = angle * 180 / pi;
+
+        if (angleDeg > 30 && angleDeg <= 150) {
+            onSymbolsTapped(); 
+        } else if (angleDeg > 150 && angleDeg <= 270) {
+            onShiftTapped(); 
+        } else {
+            onSpaceTapped();
+        }
+      },
+      child: CustomPaint(
+        size: Size.fromRadius(radius),
+        painter: _ArcPainter(strokeWidth: strokeWidth),
+      ),
+    );
+  }
+}
+
+// ~~~ WIDGET 4: The Custom Painter for Arcs and Text ~~~
+class _ArcPainter extends CustomPainter {
+  final double strokeWidth;
+  
+  _ArcPainter({ required this.strokeWidth });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - strokeWidth / 2;
+    
+    const double gap = pi / 18.0;
+    const double sweepAngle = (2 * pi / 3) - gap;
+    
+    // --- FIX: Selectively flip text based on its position on the circle ---
+    final arcSections = [
+      {'startAngle': (pi / 6), 'text': 'SYMBOLS', 'flipText': true}, // Text on top needs to be flipped
+      {'startAngle': (5 * pi / 6), 'text': 'SHIFT',   'flipText': false},
+      {'startAngle': (9 * pi / 6), 'text': 'SPACE',   'flipText': false},
+    ];
+
+    final paint = Paint()
+      ..color = const Color(0xFF5d1919)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    final double capAdjust = asin((strokeWidth / 2) / radius);
+    
+    for (var section in arcSections) {
+      final startAngle = section['startAngle'] as double;
+      
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle + capAdjust,
+        sweepAngle - (2 * capAdjust),
+        false,
+        paint,
+      );
+
+      _drawCurvedText(canvas, center, radius, section, sweepAngle);
+    }
+  }
+
+  void _drawCurvedText(Canvas canvas, Offset center, double radius, Map<String, dynamic> section, double sweepAngle) {
+    final textStyle = TextStyle(
+      fontSize: 14,
+      color: Colors.white.withOpacity(0.8),
+      fontWeight: FontWeight.bold,
+    );
+    
+    final String text = section['text'] as String;
+    final double startAngle = section['startAngle'] as double;
+    final bool isUpsideDown = section['flipText'] as bool;
+
+    // Reverse the string for flipped text so it reads left-to-right along the curve
+    final String effectiveText = isUpsideDown ? text.split('').reversed.join('') : text;
+    
+    double totalTextAngle = 0;
+    final List<TextPainter> charPainters = [];
+    for (int i = 0; i < effectiveText.length; i++) {
+        final painter = TextPainter(
+            text: TextSpan(text: effectiveText[i], style: textStyle),
+            textDirection: TextDirection.ltr,
+        )..layout();
+        charPainters.add(painter);
+        totalTextAngle += 2 * asin(painter.width / (2 * radius));
+    }
+
+    final double centeredStartAngle = startAngle + (sweepAngle - totalTextAngle) / 2;
+    double currentAngle = 0;
+
+    for (int i = 0; i < charPainters.length; i++) {
+      final textPainter = charPainters[i];
+      final charWidth = textPainter.width;
+      final alpha = 2 * asin(charWidth / (2 * radius));
+      final angleForThisChar = centeredStartAngle + currentAngle + alpha / 2;
+      
+      canvas.save();
+      canvas.translate(
+        center.dx + radius * cos(angleForThisChar),
+        center.dy + radius * sin(angleForThisChar),
+      );
+
+      // Add 180 degrees (pi radians) for flipped text
+      final rotation = angleForThisChar + (pi / 2) + (isUpsideDown ? pi : 0);
+      canvas.rotate(rotation);
+      
+      textPainter.paint(canvas, Offset(-charWidth / 2, -textPainter.height / 2));
+      canvas.restore();
+
+      currentAngle += alpha;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ArcPainter oldDelegate) =>
+      strokeWidth != oldDelegate.strokeWidth;
 }
