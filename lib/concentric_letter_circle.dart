@@ -4,6 +4,9 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:flutter/services.dart';
+import 'package:operation_sunrise/audio/audio_controller.dart';
+import 'package:operation_sunrise/audio/sounds.dart';
+import 'package:provider/provider.dart';
 
 // A helper class to hold the results of our layout calculation.
 class _LayoutSolution {
@@ -26,8 +29,8 @@ class ConcentricLetterCircle extends StatelessWidget {
 
   final List<String> _characterSet = [
     'X', 'Q', 'Z', 'K', 'V', 'P', 'B', 'G', 'Y', 'F', 'M', 'C',
-    ':', "'", '-', ',', '5', '4', '3', '2', '1', '0',
-    'L', 'D', 'R', 'H', 'S', 'N', 'I', 'O', 'A', 'T', 'E', _backspaceChar,
+    ':', "'", '-', '2',
+    'J', 'U', 'W', 'L', 'D', 'R', 'H', 'S', 'N', 'I', 'O', 'A', 'T', 'E', _backspaceChar,
   ];
 
   ConcentricLetterCircle({
@@ -70,6 +73,7 @@ class ConcentricLetterCircle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+
     return LayoutBuilder(
       builder: (context, constraints) {
         const double maxDiameter = 500.0;
@@ -197,7 +201,7 @@ class _LetterCircleButton extends StatelessWidget {
             highlightColor: Colors.white.withOpacity(0.25),
             splashColor: Colors.white.withOpacity(0.2),
             onTap: () {
-              HapticFeedback.lightImpact();
+              HapticFeedback.selectionClick();
               if (isBackspace) {
                 onBackspaceTapped();
               } else {

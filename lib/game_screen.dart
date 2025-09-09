@@ -1,7 +1,10 @@
 // game_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:operation_sunrise/audio/audio_controller.dart';
+import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/concentric_letter_circle.dart';
+import 'package:provider/provider.dart';
 import 'dart:math';
 import 'level_video_player.dart';
 
@@ -153,6 +156,7 @@ class _GameScreenState extends State<GameScreen> {
 
   /// Lays out the solution field using a single, uniform box size for all lines.
   Widget _buildSolutionField(BuildContext context) {
+
     final screenWidth = MediaQuery.of(context).size.width;
     const double horizontalPadding = 16.0;
     final double availableWidth = screenWidth - (horizontalPadding * 2);
@@ -230,8 +234,18 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+
+
   @override
   Widget build(BuildContext context) {
+    final audioController = context.read<AudioController>();
+
+    void letterWasTapped(String letter) {
+      audioController.playSfx(SfxType.letter);
+      print("TERE");
+      _onLetterTapped(letter);
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -257,7 +271,7 @@ class _GameScreenState extends State<GameScreen> {
                 padding: const EdgeInsets.all(2.0),
                 child: Center(
                   child: ConcentricLetterCircle(
-                    onLetterTapped: _onLetterTapped,
+                    onLetterTapped: letterWasTapped,
                     onBackspaceTapped: _onBackspaceTapped,
                     onClearAllTapped: _onClearAllTapped, 
                     onShiftTapped: () { /* Placeholder */ }, 
