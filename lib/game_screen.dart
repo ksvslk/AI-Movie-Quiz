@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:operation_sunrise/audio/audio_controller.dart';
 import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/concentric_letter_circle.dart';
+import 'package:operation_sunrise/menu/menu_drawer.dart';
 import 'package:provider/provider.dart';
 import 'dart:math';
 import 'level_video_player.dart';
@@ -23,7 +24,7 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> {
-  final String _displaySolution = 'The Godfather Part II';
+  final String _displaySolution = 'FIGHT CLUB';
   final List<String> _userInput = [];
 
   void _onLetterTapped(String letter) {
@@ -57,17 +58,22 @@ class _GameScreenState extends State<GameScreen> {
     required double spacing,
     int maxLines = 3,
   }) {
-    const double maxBoxSize = 30.0;
+    const double maxBoxSize = 35.0;
     const double minBoxSize = 10.0;
     const double step = 0.5;
 
-    for (double currentSize = maxBoxSize; currentSize >= minBoxSize; currentSize -= step) {
+    for (
+      double currentSize = maxBoxSize;
+      currentSize >= minBoxSize;
+      currentSize -= step
+    ) {
       int lines = 1;
       double currentLineWidth = 0.0;
       final double spaceWidth = currentSize * 0.4;
 
       for (final word in words) {
-        final double wordWidth = (word.length * currentSize) + (max(0, word.length - 1) * spacing);
+        final double wordWidth =
+            (word.length * currentSize) + (max(0, word.length - 1) * spacing);
 
         // This check handles cases where a single word is too long for the screen
         if (wordWidth > availableWidth) {
@@ -75,7 +81,9 @@ class _GameScreenState extends State<GameScreen> {
           break;
         }
 
-        final double prospectiveWidth = (currentLineWidth == 0.0) ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
+        final double prospectiveWidth = (currentLineWidth == 0.0)
+            ? wordWidth
+            : currentLineWidth + spaceWidth + wordWidth;
 
         if (prospectiveWidth > availableWidth) {
           lines++;
@@ -112,19 +120,22 @@ class _GameScreenState extends State<GameScreen> {
             width: boxSize,
             height: boxSize,
             decoration: isFilled
-              ? BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blueGrey.shade700, Colors.blueGrey.shade600],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                ? BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.blueGrey.shade700,
+                        Colors.blueGrey.shade600,
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(boxSize * 0.2),
+                  )
+                : BoxDecoration(
+                    color: Colors.grey.shade800,
+                    border: Border.all(color: Colors.grey.shade600),
+                    borderRadius: BorderRadius.circular(boxSize * 0.2),
                   ),
-                  borderRadius: BorderRadius.circular(boxSize * 0.2),
-                )
-              : BoxDecoration(
-                  color: Colors.grey.shade800,
-                  border: Border.all(color: Colors.grey.shade600),
-                  borderRadius: BorderRadius.circular(boxSize * 0.2),
-                ),
             alignment: Alignment.center,
             child: Text(
               isFilled ? userInput[currentInputIndex] : '',
@@ -156,7 +167,6 @@ class _GameScreenState extends State<GameScreen> {
 
   /// Lays out the solution field using a single, uniform box size for all lines.
   Widget _buildSolutionField(BuildContext context) {
-
     final screenWidth = MediaQuery.of(context).size.width;
     const double horizontalPadding = 16.0;
     final double availableWidth = screenWidth - (horizontalPadding * 2);
@@ -181,8 +191,11 @@ class _GameScreenState extends State<GameScreen> {
     final double spaceWidth = boxSize * 0.4;
 
     for (final String word in words) {
-      final double wordWidth = (word.length * boxSize) + (max(0, word.length - 1) * spacing);
-      final double prospectiveWidth = (currentLineWords.isEmpty) ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
+      final double wordWidth =
+          (word.length * boxSize) + (max(0, word.length - 1) * spacing);
+      final double prospectiveWidth = (currentLineWords.isEmpty)
+          ? wordWidth
+          : currentLineWidth + spaceWidth + wordWidth;
 
       if (currentLineWords.isNotEmpty && prospectiveWidth > availableWidth) {
         // Line is full. Build the widget using the uniform boxSize.
@@ -222,7 +235,10 @@ class _GameScreenState extends State<GameScreen> {
 
     // The final widget is a Column of Rows.
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: horizontalPadding),
+      padding: const EdgeInsets.symmetric(
+        vertical: 8.0,
+        horizontal: horizontalPadding,
+      ),
       child: Column(
         children: [
           for (int i = 0; i < lineWidgets.length; i++) ...[
@@ -234,25 +250,10 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-
-
   @override
   Widget build(BuildContext context) {
-    final audioController = context.read<AudioController>();
-
-    void letterWasTapped(String letter) {
-      audioController.playSfx(SfxType.letter);
-      print("TERE");
-      _onLetterTapped(letter);
-    }
-
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(widget.levelName, style: const TextStyle(color: Colors.white70)),
-        iconTheme: const IconThemeData(color: Colors.white70),
-      ),
+      drawer: MenuDrawer(parentNavigatorKey: GlobalKey<NavigatorState>()),
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Column(
@@ -261,9 +262,9 @@ class _GameScreenState extends State<GameScreen> {
               flex: 4,
               child: LevelVideoPlayer(videoPath: widget.videoPath),
             ),
-            
+
             _buildSolutionField(context),
-            
+
             Expanded(
               flex: 5,
               child: Container(
@@ -271,12 +272,18 @@ class _GameScreenState extends State<GameScreen> {
                 padding: const EdgeInsets.all(2.0),
                 child: Center(
                   child: ConcentricLetterCircle(
-                    onLetterTapped: letterWasTapped,
+                    onLetterTapped: _onLetterTapped,
                     onBackspaceTapped: _onBackspaceTapped,
-                    onClearAllTapped: _onClearAllTapped, 
-                    onShiftTapped: () { /* Placeholder */ }, 
-                    onSymbolsTapped: () { /* Placeholder */ }, 
-                    onSpaceTapped: () { /* Placeholder */ },
+                    onClearAllTapped: _onClearAllTapped,
+                    onShiftTapped: () {
+                      /* Placeholder */
+                    },
+                    onSymbolsTapped: () {
+                      /* Placeholder */
+                    },
+                    onSpaceTapped: () {
+                      /* Placeholder */
+                    },
                   ),
                 ),
               ),
@@ -284,6 +291,23 @@ class _GameScreenState extends State<GameScreen> {
           ],
         ),
       ),
+      floatingActionButton: Builder(
+        builder: (BuildContext scaffoldContext) {
+          return FloatingActionButton(
+            elevation: 4.0,
+            mini: true,
+            onPressed: () {
+              Scaffold.of(
+                scaffoldContext,
+              ).openDrawer(); // Use scaffoldContext, not context
+            },
+            child: const Icon(Icons.settings),
+          );
+        },
+      ),
+      drawerEnableOpenDragGesture: false,
+      endDrawerEnableOpenDragGesture: false,
+      floatingActionButtonLocation: FloatingActionButtonLocation.miniEndDocked,
     );
   }
 }

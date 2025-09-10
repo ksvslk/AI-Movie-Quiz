@@ -4,6 +4,9 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:flutter/services.dart';
+import 'package:operation_sunrise/audio/audio_controller.dart';
+import 'package:operation_sunrise/audio/sounds.dart';
+import 'package:provider/provider.dart';
 // Note: I'm commenting out your project-specific imports to make this snippet runnable.
 // You should re-enable them in your project.
 // import 'package:operation_sunrise/audio/audio_controller.dart';
@@ -134,6 +137,7 @@ class ConcentricLetterCircle extends StatelessWidget {
                   size: uniformButtonSize,
                   onLetterTapped: onLetterTapped,
                   onBackspaceTapped: onBackspaceTapped,
+                  onClearAllTapped: onClearAllTapped,
                 ),
               ),
             );
@@ -165,6 +169,7 @@ class _LetterCircleButton extends StatelessWidget {
   final double size;
   final Function(String) onLetterTapped;
   final VoidCallback onBackspaceTapped;
+  final VoidCallback onClearAllTapped;
   static const String _backspaceChar = '\u232B';
 
   const _LetterCircleButton({
@@ -172,10 +177,14 @@ class _LetterCircleButton extends StatelessWidget {
     required this.size,
     required this.onLetterTapped,
     required this.onBackspaceTapped,
+    required this.onClearAllTapped,
   });
 
   @override
   Widget build(BuildContext context) {
+
+    final audioController = context.read<AudioController>();
+
     final bool isBackspace = letter == _backspaceChar;
     
     final Color seatBackColor = isBackspace ? Colors.blue.shade800 : Colors.redAccent.shade400;
@@ -224,11 +233,21 @@ class _LetterCircleButton extends StatelessWidget {
                 highlightColor: Colors.white.withOpacity(0.25),
                 splashColor: Colors.white.withOpacity(0.2),
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   if (isBackspace) {
+                    audioController.playSfx(SfxType.erase);
+                    HapticFeedback.selectionClick();
                     onBackspaceTapped();
                   } else {
+                    audioController.playSfx(SfxType.select);
+                    HapticFeedback.selectionClick();
                     onLetterTapped(letter);
+                  }
+                },
+                onLongPress: () {
+                  if (isBackspace) {
+                    audioController.playSfx(SfxType.eraseAll);
+                    HapticFeedback.lightImpact();
+                    onClearAllTapped();
                   }
                 },
               ),
@@ -403,9 +422,9 @@ class _ArcPainter extends CustomPainter {
     const double sweepAngle = (2 * pi / 3) - gap;
     
     final arcSections = [
-      {'startAngle': (pi / 6), 'text': 'SYMBOLS', 'flipText': true, 'arcType': _TappedArc.symbols},
-      {'startAngle': (5 * pi / 6), 'text': 'SHIFT',   'flipText': false, 'arcType': _TappedArc.shift},
-      {'startAngle': (9 * pi / 6), 'text': 'SPACE',   'flipText': false, 'arcType': _TappedArc.space},
+      {'startAngle': (pi / 6), 'text': 'Watch ad: REVEAL YEAR', 'flipText': true, 'arcType': _TappedArc.symbols},
+      {'startAngle': (5 * pi / 6), 'text': 'Watch ad: REVEAL MAIN ACTOR',   'flipText': false, 'arcType': _TappedArc.shift},
+      {'startAngle': (9 * pi / 6), 'text': 'Watch ad: REVEAL QUOTE',   'flipText': false, 'arcType': _TappedArc.space},
     ];
 
     final double capAdjust = asin((strokeWidth / 2) / radius);

@@ -18,6 +18,9 @@ class AudioController {
   ValueNotifier<AppLifecycleState>? _lifecycleNotifier;
 
   late AudioSource letter;
+  late AudioSource select;
+  late AudioSource erase;
+  late AudioSource eraseAll;
 
   AudioController({int polyphony = 2});
 
@@ -58,6 +61,9 @@ class AudioController {
     await SoLoud.instance.init();
     try {
       letter = await SoLoud.instance.loadAsset('assets/sfx/letter.wav');
+      select = await SoLoud.instance.loadAsset('assets/sfx/select.wav');
+      erase = await SoLoud.instance.loadAsset('assets/sfx/erase.wav');
+      eraseAll = await SoLoud.instance.loadAsset('assets/sfx/erase_all.wav');
     } on Exception catch (e) {
       _log.severe("Error loading sound files", e);
     }
@@ -80,6 +86,15 @@ class AudioController {
     switch (type) {
       case SfxType.letter:
         SoLoud.instance.play(letter);
+        break;
+      case SfxType.select:
+        SoLoud.instance.play(select);
+        break;
+      case SfxType.erase:
+        SoLoud.instance.play(erase);
+        break;
+      case SfxType.eraseAll:
+        SoLoud.instance.play(eraseAll);
         break;
     }
   }

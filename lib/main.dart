@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -5,21 +7,27 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:logging/logging.dart';
 import 'package:operation_sunrise/app/app_lifecycle.dart';
 import 'package:operation_sunrise/audio/audio_controller.dart';
+import 'package:operation_sunrise/change_notifier/money_controller.dart';
 import 'package:operation_sunrise/constants.dart';
 import 'package:operation_sunrise/database/local_storage_settings_persistence.dart';
 import 'package:operation_sunrise/database/settings_controller.dart';
 import 'package:operation_sunrise/firebase_options.dart';
 import 'package:operation_sunrise/game_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+import 'dart:developer' as dev;
 
 Future<void> setUpRemoteConfig() async {
   final remoteConfig = FirebaseRemoteConfig.instance;
   await remoteConfig.setConfigSettings(
     RemoteConfigSettings(
       fetchTimeout: const Duration(minutes: 1),
-      minimumFetchInterval: const Duration(minutes: 1), //TODO: Change for production
+      minimumFetchInterval: const Duration(
+        minutes: 1,
+      ), //TODO: Change for production
     ),
   );
   await remoteConfig.setDefaults(const {C.minutesBeforeFirstAd: 5});
@@ -29,9 +37,38 @@ Future<void> setUpRemoteConfig() async {
   await remoteConfig.fetchAndActivate();
 }
 
+Future<void> initPlatformState() async {
+  await Purchases.setLogLevel(LogLevel.verbose);
+  PurchasesConfiguration configuration;
+  if (Platform.isAndroid) {
+    configuration = PurchasesConfiguration("goog_YvhiqISylTQpNNSPJLYaRQEWkME");
+  } else {
+    configuration = PurchasesConfiguration("appl_GbYuccaEqksdlTnhHOmmGULUqiX");
+  }
+  await Purchases.configure(configuration);
+}
+
 Future<void> main() async {
   // Ensure that all Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+  //debugPaintSizeEnabled = true;
+  // Subscribe to log messages.
+  Logger.root.onRecord.listen((record) {
+    if (record.level >= Level.INFO) {
+      dev.log(
+        record.message,
+        time: record.time,
+        level: record.level.value,
+        name: record.loggerName,
+        zone: record.zone,
+        error: record.error,
+        stackTrace: record.stackTrace,
+      );
+    }
+  });
+
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
@@ -59,6 +96,8 @@ Future<void> main() async {
     print("Existing user found.");
   }
 
+  await initPlatformState();
+
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   final settingsController = SettingsController(
@@ -75,8 +114,11 @@ Future<void> main() async {
             lazy: false,
             create: (context) => settingsController,
           ),
-          ProxyProvider2<SettingsController, ValueNotifier<AppLifecycleState>,
-              AudioController>(
+          ProxyProvider2<
+            SettingsController,
+            ValueNotifier<AppLifecycleState>,
+            AudioController
+          >(
             lazy: false,
             create: (context) => AudioController()..initialize(),
             update: (context, settings, lifecycleNotifier, audio) {
@@ -87,17 +129,16 @@ Future<void> main() async {
             },
             dispose: (context, audio) => audio.dispose(),
           ),
+          ChangeNotifierProvider(create: (context) => MoneyController()),
         ],
-        child: MyApp(settingsController: settingsController),
+        child: MyApp(),
       ),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  final SettingsController settingsController;
-
-  const MyApp({super.key, required this.settingsController});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -106,8 +147,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Operation Sunrise',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
+        useMaterial3: false,
       ),
       home: MyHomePage(title: "Tere"),
     );
@@ -124,21 +165,24 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final brightness = colorScheme.brightness == Brightness.dark
+        ? Brightness.light
+        : Brightness.dark;
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        systemNavigationBarColor: colorScheme.surface,
+        statusBarColor: colorScheme.surface,
+        systemNavigationBarIconBrightness: brightness,
+        statusBarIconBrightness: brightness,
       ),
+    );
+
+    return Scaffold(
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('levels')
@@ -161,8 +205,7 @@ class _MyHomePageState extends State<MyHomePage> {
               final String? videoPath = levelData['path'];
 
               return Card(
-                margin:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: ListTile(
                   leading: CircleAvatar(
                     child: Text(levelData['levelNumber'].toString()),
@@ -197,11 +240,7 @@ class _MyHomePageState extends State<MyHomePage> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
+
     );
   }
 }
