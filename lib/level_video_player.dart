@@ -1,6 +1,7 @@
-// level_video_player.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:operation_sunrise/data/settings_controller.dart';
+import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:lottie/lottie.dart';
@@ -16,11 +17,12 @@ class LevelVideoPlayer extends StatefulWidget {
 
 class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProviderStateMixin {
   late VideoPlayerController _videoPlayerController;
-  // MODIFICATION 1: Make the ChewieController nullable.
   ChewieController? _chewieController;
 
-  int _initGeneration = 0;
+  // This will hold the SettingsController instance from your Provider.
+  late SettingsController _settings;
 
+  int _initGeneration = 0;
   bool _isVideoInitialized = false;
   bool _isAnimationTimePassed = false;
   bool _hasError = false;
@@ -37,8 +39,24 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProvider
   void initState() {
     super.initState();
     _initializeAnimationControllers();
+    // Note: We can't use context.read here yet.
+    // Listeners will be attached in didChangeDependencies.
     _initializePlayer();
     _startAnimationTimer();
+  }
+
+  /// Use didChangeDependencies to safely access the Provider
+  /// and attach listeners for setting changes.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Get the settings controller instance using context.read.
+    // We only need to get it once to set up listeners.
+    _settings = context.read<SettingsController>();
+    
+    // Add listeners for BOTH ValueNotifiers. They trigger the same callback.
+    _settings.autoplayOn.addListener(_onSettingChanged);
+    _settings.loopingOn.addListener(_onSettingChanged);
   }
 
   void _initializeAnimationControllers() {
@@ -55,8 +73,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProvider
     if (widget.videoPath != oldWidget.videoPath) {
       _initGeneration++;
       
-      // MODIFICATION 2: Dispose and immediately nullify the controller.
-      // The ?. operator handles the case where it might already be null.
       _videoPlayerController.dispose();
       _chewieController?.dispose();
       _chewieController = null;
@@ -75,6 +91,64 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProvider
     }
   }
 
+  /// Helper method to create the ChewieController based on current settings.
+  /// This avoids code duplication.
+  ChewieController _createChewieController() {
+    return ChewieController(
+      videoPlayerController: _videoPlayerController,
+      // Read the current .value from the ValueNotifiers
+      autoPlay: _settings.autoplayOn.value,
+      looping: _settings.loopingOn.value,
+      allowFullScreen: false,
+      allowPlaybackSpeedChanging: false,
+      showOptions: false,
+      showControls: true,
+      showControlsOnInitialize: false,
+      errorBuilder: (context, errorMessage) {
+        return Center(
+          child: Text('Error playing video: $errorMessage', style: const TextStyle(color: Colors.white)),
+        );
+      },
+    );
+  }
+
+  /// This is the callback that reacts to any relevant setting change.
+  void _onSettingChanged() {
+    // Ensure the player is ready before trying to update it.
+    if (_chewieController == null || !_videoPlayerController.value.isInitialized) {
+      return;
+    }
+
+    final newAutoplayValue = _settings.autoplayOn.value;
+    final newLoopingValue = _settings.loopingOn.value;
+
+    // Check if a change is actually needed to avoid unnecessary work.
+    if (_chewieController!.autoPlay == newAutoplayValue && _chewieController!.looping == newLoopingValue) {
+      return;
+    }
+    
+    // Store the old controller to dispose it after the new one is active.
+    final oldChewieController = _chewieController;
+
+    // Create a new ChewieController with the updated settings and update the state.
+    // The VideoPlayerController is reused, preserving the video's position.
+    setState(() {
+      _chewieController = _createChewieController();
+    });
+
+    // It's good practice to dispose the old controller after the state has been updated.
+    oldChewieController?.dispose();
+    
+    // For better UX, explicitly play or pause if the autoplay setting changed.
+    if (oldChewieController?.autoPlay != newAutoplayValue) {
+      if (newAutoplayValue) {
+          _videoPlayerController.play();
+      } else {
+          _videoPlayerController.pause();
+      }
+    }
+  }
+
   Future<void> _initializePlayer() async {
     final int currentGeneration = _initGeneration;
 
@@ -82,9 +156,7 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProvider
       final ref = FirebaseStorage.instance.ref(widget.videoPath);
       final url = await ref.getDownloadURL();
 
-      if (currentGeneration != _initGeneration || !mounted) {
-        return;
-      }
+      if (currentGeneration != _initGeneration || !mounted) return;
 
       _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
       await _videoPlayerController.initialize();
@@ -93,23 +165,10 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProvider
         _videoPlayerController.dispose();
         return;
       }
-
-      // Assign the new controller instance here.
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController,
-        autoPlay: false,
-        looping: true,
-        allowFullScreen: false,
-        allowPlaybackSpeedChanging: false,
-        showOptions: false,
-        showControls: true,
-        showControlsOnInitialize: false,
-        errorBuilder: (context, errorMessage) {
-          return Center(
-            child: Text('Error playing video: $errorMessage', style: const TextStyle(color: Colors.white)),
-          );
-        },
-      );
+      
+      // Use our new helper method to create the initial controller instance.
+      // _settings will be available by the time this is needed.
+      _chewieController = _createChewieController();
       
       if (currentGeneration == _initGeneration && mounted) {
         setState(() {
@@ -147,9 +206,12 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProvider
 
   @override
   void dispose() {
+    // IMPORTANT! Remove ALL listeners to prevent memory leaks.
+    _settings.autoplayOn.removeListener(_onSettingChanged);
+    _settings.loopingOn.removeListener(_onSettingChanged);
+
     _initGeneration++;
     _videoPlayerController.dispose();
-    // MODIFICATION 3: Also dispose and nullify here for completeness.
     _chewieController?.dispose();
     _chewieController = null;
     _loadingOpacityController.dispose();
@@ -166,13 +228,10 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProvider
     return Stack(
       alignment: Alignment.center,
       children: [
-        // MODIFICATION 4: Add a null-check for the controller.
-        // This is the ultimate safeguard that prevents the error.
         if (_chewieController != null && _isVideoInitialized && _isAnimationTimePassed)
           FadeTransition(
             opacity: _videoOpacityAnimation,
             child: Chewie(
-              // Use the null-assertion operator (!) because we've already checked for null.
               controller: _chewieController!,
             ),
           ),
@@ -197,3 +256,4 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> with TickerProvider
     );
   }
 }
+

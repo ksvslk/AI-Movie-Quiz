@@ -9,12 +9,13 @@
 abstract class SettingsPersistence {
   Future<bool> getEulaAccepted();
   Future<bool> getSoundsOn();
-  Future<String> getToken();
-  Future<Map<String, String>> getBanned();
+  Future<bool> getAutoplayOn();
+  Future<bool> getLoopingOn();
 
   Future<void> setEulaAccepted();
   Future<void> saveSoundsOn(bool value);
-  Future<void> setToken(String value);
+  Future<void> saveAutoplayOn(bool value);
+  Future<void> saveLoopingOn(bool value);
 
   Future<void> saveAppInstallTime();
   Future<void> saveLastReviewAskTime();
@@ -22,8 +23,9 @@ abstract class SettingsPersistence {
   Future<void> saveLastPlayedLevel(int levelNr);
   Future<int> getLastPlayedLevel();
 
-
   Future<DateTime?> getAppInstallTime();
   Future<DateTime?> getLastReviewAskTime();
+
+
   
 }

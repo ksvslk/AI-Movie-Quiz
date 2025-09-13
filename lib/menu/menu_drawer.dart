@@ -20,9 +20,9 @@ class MenuDrawer extends StatelessWidget {
       fontFamily: "EpundaSlab",
       brightness: Brightness.dark,
       // A deep, dark background color for the drawer
-      canvasColor: const Color(0xFF1F1F1F), 
+      canvasColor: const Color(0xFF1F1F1F),
       // An accent color for selected items, avatars, etc.
-      primaryColor: Colors.tealAccent[400], 
+      primaryColor: Colors.tealAccent[400],
       // Consistent styling for all ListTiles within the drawer
       listTileTheme: ListTileThemeData(
         iconColor: Colors.grey[400],
@@ -38,7 +38,11 @@ class MenuDrawer extends StatelessWidget {
       // Styling for circle avatars
       chipTheme: ChipThemeData(
         backgroundColor: Colors.tealAccent[400],
-        labelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: "EpundaSlab"),
+        labelStyle: const TextStyle(
+          color: Colors.black,
+          fontWeight: FontWeight.bold,
+          fontFamily: "EpundaSlab",
+        ),
       ),
     );
 
@@ -96,9 +100,42 @@ class MenuDrawer extends StatelessWidget {
                   );
                 },
               ),
+              ValueListenableBuilder<bool>(
+                valueListenable: settings.autoplayOn,
+                builder: (context, autoplayOn, child) {
+                  return SwitchListTile(
+                    title: const Text("Autoplay"),
+                    value: autoplayOn,
+                    onChanged: (bool value) {
+                      settings.toggleAutoplayOn();
+                    },
+                    secondary: const Icon(Icons.auto_mode),
+                    // Use a more vibrant color for the active switch
+                    activeColor: Theme.of(context).primaryColor,
+                  );
+                },
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: settings.loopingOn,
+                builder: (context, loopingOn, child) {
+                  return SwitchListTile(
+                    title: const Text("Looping"),
+                    value: loopingOn,
+                    onChanged: (bool value) {
+                      settings.toggleLoopingOn();
+                    },
+                    secondary: const Icon(Icons.loop),
+                    // Use a more vibrant color for the active switch
+                    activeColor: Theme.of(context).primaryColor,
+                  );
+                },
+              ),
               const Divider(),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 12.0,
+                ),
                 child: Text(
                   "Levels",
                   style: TextStyle(
@@ -108,31 +145,47 @@ class MenuDrawer extends StatelessWidget {
                   ),
                 ),
               ),
-              for (final level in levelController.levels)
-                ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    radius: 15,
-                    // Use the theme's primary color for the avatar background
-                    backgroundColor: Theme.of(context).primaryColor,
-                    child: Text(
-                      level.levelNumber.toString(),
-                      style: const TextStyle(
-                        color: Colors.black, // Dark text on a bright background
-                        fontWeight: FontWeight.bold,
-                        fontFamily: "EpundaSlab"
+              // The code from here is what you should change.
+              // Instead of the for loop, you would need to use a different widget.
+              // The easiest way is to wrap the level list in its own widget like a SizedBox or Expanded.
+              SizedBox(
+                // You might need to give this a specific height or wrap it in a way
+                // that it doesn't try to take infinite height inside the main ListView.
+                // For a drawer, this can be tricky. A more robust solution might involve Slivers.
+                // But for demonstration, let's assume we can constrain it.
+                height: 300, // Example fixed height
+                child: ListView.builder(
+                  shrinkWrap: true, // Often needed when nesting scrollables
+                  itemCount: levelController.levels.length,
+                  itemBuilder: (context, index) {
+                    final level = levelController.levels[index];
+                    return ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 15,
+                        backgroundColor: Theme.of(context).primaryColor,
+                        child: Text(
+                          level.levelNumber.toString(),
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: "EpundaSlab",
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  title: Text(level.characteristic),
-                  selected: level.levelNumber == levelController.currentLevel?.levelNumber,
-                  // The selectedTileColor is now handled by the ListTileTheme
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    settings.setLastPlayedLevel(level.levelNumber);
-                    levelController.selectLevelByNumber(level.levelNumber);
+                      title: Text(level.characteristic),
+                      selected:
+                          level.levelNumber ==
+                          levelController.currentLevel?.levelNumber,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        settings.setLastPlayedLevel(level.levelNumber);
+                        levelController.selectLevelByNumber(level.levelNumber);
+                      },
+                    );
                   },
                 ),
+              ),
               const Divider(),
               const InfoDisplay(),
             ],

@@ -27,28 +27,6 @@ class LocalStorageSettingsPersistence extends SettingsPersistence {
   }
 
   @override
-  Future<String> getToken() async {
-    final prefs = await instanceFuture;
-    return prefs.getString('fcmToken') ?? "";
-  }
-
-  @override
-  Future<void> setToken(String value) async {
-    final prefs = await instanceFuture;
-    await prefs.setString('fcmToken', value);
-  }
-
-  @override
-  Future<Map<String, String>> getBanned() async {
-    final prefs = await instanceFuture;
-    final bannedMapString = prefs.getString('bannedUsers');
-    final bannedMapObject = Map<String, String>.from(
-      jsonDecode(bannedMapString ?? "{}"),
-    );
-    return bannedMapObject;
-  }
-
-  @override
   Future<bool> getEulaAccepted() async {
     final prefs = await instanceFuture;
     return prefs.getBool('eulaAccepted') ?? false;
@@ -108,5 +86,29 @@ class LocalStorageSettingsPersistence extends SettingsPersistence {
     final prefs = await SharedPreferences.getInstance();
     // Return the saved level, or 1 if nothing is saved yet.
     return prefs.getInt(C.lastPlayedLevelKey) ?? 1;
+  }
+
+  @override
+  Future<bool> getAutoplayOn() async {
+    final prefs = await instanceFuture;
+    return prefs.getBool('autoplayOn') ?? true;
+  }
+
+  @override
+  Future<void> saveAutoplayOn(bool value) async {
+    final prefs = await instanceFuture;
+    await prefs.setBool('autoplayOn', value);
+  }
+
+  @override
+  Future<bool> getLoopingOn() async {
+    final prefs = await instanceFuture;
+    return prefs.getBool('loopingOn') ?? true;
+  }
+
+  @override
+  Future<void> saveLoopingOn(bool value) async {
+    final prefs = await instanceFuture;
+    await prefs.setBool('loopingOn', value);
   }
 }

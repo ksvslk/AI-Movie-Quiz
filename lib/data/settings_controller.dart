@@ -12,11 +12,13 @@ import 'settings_persistence.dart';
 
 /// An class that holds settings like [playerName] or [musicOn],
 /// and saves them to an injected persistence store.
-class SettingsController with ChangeNotifier{
+class SettingsController with ChangeNotifier {
   final Logger _log = Logger('SettingsController');
 
   final SettingsPersistence _persistence;
   ValueNotifier<bool> soundsOn = ValueNotifier(true);
+  ValueNotifier<bool> autoplayOn = ValueNotifier(true);
+  ValueNotifier<bool> loopingOn = ValueNotifier(true);
   int _lastPlayedLevelNumber = 1;
   int get lastPlayedLevelNumber => _lastPlayedLevelNumber;
   bool isEulaAccepted = false;
@@ -29,14 +31,18 @@ class SettingsController with ChangeNotifier{
   Future<void> loadStateFromPersistence() async {
     await Future.wait([
       _persistence.getSoundsOn().then((value) => soundsOn.value = value),
+      _persistence.getAutoplayOn().then((value) => autoplayOn.value = value),
+      _persistence.getLoopingOn().then((value) => loopingOn.value = value),
       _persistence.getEulaAccepted().then((value) => isEulaAccepted = value),
-      _persistence.getLastPlayedLevel().then((value) => _lastPlayedLevelNumber = value),
+      _persistence.getLastPlayedLevel().then(
+        (value) => _lastPlayedLevelNumber = value,
+      ),
     ]);
     saveAppInstallTime();
     notifyListeners();
   }
 
-    Future<void> setLastPlayedLevel(int levelNumber) async {
+  Future<void> setLastPlayedLevel(int levelNumber) async {
     if (_lastPlayedLevelNumber != levelNumber) {
       _lastPlayedLevelNumber = levelNumber;
       await _persistence.saveLastPlayedLevel(levelNumber);
@@ -59,16 +65,14 @@ class SettingsController with ChangeNotifier{
     _persistence.saveSoundsOn(soundsOn.value);
   }
 
-  Future<void> setToken(String token) async {
-    _persistence.setToken(token);
+  void toggleAutoplayOn() {
+    autoplayOn.value = !autoplayOn.value;
+    _persistence.saveAutoplayOn(autoplayOn.value);
   }
 
-  Future<String> getToken() async {
-    return await _persistence.getToken();
-  }
-
-  Future<Map<String, String>> getBanned() async {
-    return await _persistence.getBanned();
+  void toggleLoopingOn() {
+    loopingOn.value = !loopingOn.value;
+    _persistence.saveAutoplayOn(loopingOn.value);
   }
 
   Future<void> saveAppInstallTime() async {
@@ -79,9 +83,8 @@ class SettingsController with ChangeNotifier{
     required String? name,
     required String? text,
   }) async {
-
     if (name == null || text == null || !text.contains(name)) {
-      return false; 
+      return false;
     }
 
     final now = DateTime.now().toUtc();
@@ -93,7 +96,9 @@ class SettingsController with ChangeNotifier{
       return false;
     }
 
-    final minutes = FirebaseRemoteConfig.instance.getInt(C.minutesBeforeReviewTag);
+    final minutes = FirebaseRemoteConfig.instance.getInt(
+      C.minutesBeforeReviewTag,
+    );
 
     if (now.difference(installTime).inMinutes < minutes) {
       return false;
@@ -116,5 +121,4 @@ class SettingsController with ChangeNotifier{
     }
     return false;
   }
-
 }
