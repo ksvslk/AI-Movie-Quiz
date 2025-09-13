@@ -4,7 +4,7 @@
 
 import 'dart:convert';
 
-import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:operation_sunrise/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_persistence.dart';
 
@@ -19,7 +19,6 @@ class LocalStorageSettingsPersistence extends SettingsPersistence {
     final prefs = await instanceFuture;
     return prefs.getBool('soundsOn') ?? true;
   }
-
 
   @override
   Future<void> saveSoundsOn(bool value) async {
@@ -96,5 +95,18 @@ class LocalStorageSettingsPersistence extends SettingsPersistence {
       _lastReviewAskTimeKey,
       DateTime.now().toUtc().toIso8601String(),
     );
+  }
+
+  @override
+  Future<void> saveLastPlayedLevel(int levelNr) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(C.lastPlayedLevelKey, levelNr);
+  }
+
+  @override
+  Future<int> getLastPlayedLevel() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Return the saved level, or 1 if nothing is saved yet.
+    return prefs.getInt(C.lastPlayedLevelKey) ?? 1;
   }
 }

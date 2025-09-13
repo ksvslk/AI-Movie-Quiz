@@ -19,6 +19,10 @@ abstract class SettingsPersistence {
   Future<void> saveAppInstallTime();
   Future<void> saveLastReviewAskTime();
 
+  Future<void> saveLastPlayedLevel(int levelNr);
+  Future<int> getLastPlayedLevel();
+
+
   Future<DateTime?> getAppInstallTime();
   Future<DateTime?> getLastReviewAskTime();
   

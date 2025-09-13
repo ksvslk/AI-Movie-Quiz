@@ -1,6 +1,8 @@
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
+import 'package:operation_sunrise/constants.dart';
 import 'package:operation_sunrise/extensions.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
@@ -16,6 +18,11 @@ class MoneyController extends ChangeNotifier {
 
   String? getProductFriendlyInfo() {
     return "${_cleanTitle(_product?.title ?? '...')} - ${_product?.priceString}/${_product?.subscriptionPeriod?.toFriendlyEnglish()}";
+  }
+
+  String getDescriptionOfProduct() {
+    final infoText = FirebaseRemoteConfig.instance.getString(C.premiumInfoText);
+    return infoText;
   }
 
   CustomerInfo? _customerInfo;

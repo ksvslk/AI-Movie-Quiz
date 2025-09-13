@@ -12,15 +12,13 @@ import 'settings_persistence.dart';
 
 /// An class that holds settings like [playerName] or [musicOn],
 /// and saves them to an injected persistence store.
-class SettingsController {
+class SettingsController with ChangeNotifier{
   final Logger _log = Logger('SettingsController');
 
   final SettingsPersistence _persistence;
-
-  /// Whether or not the sound is on at all. This overrides both music
-  /// and sound.
-
   ValueNotifier<bool> soundsOn = ValueNotifier(true);
+  int _lastPlayedLevelNumber = 1;
+  int get lastPlayedLevelNumber => _lastPlayedLevelNumber;
   bool isEulaAccepted = false;
 
   /// Creates a new instance of [SettingsController] backed by [persistence].
@@ -32,11 +30,22 @@ class SettingsController {
     await Future.wait([
       _persistence.getSoundsOn().then((value) => soundsOn.value = value),
       _persistence.getEulaAccepted().then((value) => isEulaAccepted = value),
+      _persistence.getLastPlayedLevel().then((value) => _lastPlayedLevelNumber = value),
     ]);
     saveAppInstallTime();
+    notifyListeners();
+  }
+
+    Future<void> setLastPlayedLevel(int levelNumber) async {
+    if (_lastPlayedLevelNumber != levelNumber) {
+      _lastPlayedLevelNumber = levelNumber;
+      await _persistence.saveLastPlayedLevel(levelNumber);
+      notifyListeners();
+    }
   }
 
   void dispose() {
+    super.dispose();
     soundsOn.dispose();
   }
 

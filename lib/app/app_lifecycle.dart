@@ -17,7 +17,7 @@ class AppLifecycleObserver extends StatefulWidget {
 
 class _AppLifecycleObserverState extends State<AppLifecycleObserver>
     with WidgetsBindingObserver {
-  //static final _log = Logger('AppLifecycleObserver');
+  static final _log = Logger('AppLifecycleObserver');
 
   final ValueNotifier<AppLifecycleState> lifecycleListenable =
       ValueNotifier(AppLifecycleState.inactive);
@@ -44,6 +44,7 @@ class _AppLifecycleObserverState extends State<AppLifecycleObserver>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _log.info(() => 'didChangeAppLifecycleState: $state');
     lifecycleListenable.value = state;
   }
 
@@ -57,5 +58,6 @@ class _AppLifecycleObserverState extends State<AppLifecycleObserver>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _log.info('Subscribed to app lifecycle updates');
   }
 }

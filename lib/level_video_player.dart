@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart'; // 1. Import Chewie
+import 'package:chewie/chewie.dart';
 
 class LevelVideoPlayer extends StatefulWidget {
   final String videoPath;
@@ -14,10 +14,7 @@ class LevelVideoPlayer extends StatefulWidget {
 }
 
 class _LevelVideoPlayerState extends State<LevelVideoPlayer> {
-  // We still need the base video player controller
   late VideoPlayerController _videoPlayerController;
-  
-  // 2. Add a controller for Chewie
   late ChewieController _chewieController;
 
   bool _isLoading = true;
@@ -29,7 +26,31 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> {
     _initializePlayer();
   }
 
+  // --- THE FIRST FIX IS HERE ---
+  // This method is called when the widget is rebuilt with a new videoPath.
+  @override
+  void didUpdateWidget(covariant LevelVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the videoPath has changed, we need to dispose of the old controllers
+    // and initialize new ones.
+    if (widget.videoPath != oldWidget.videoPath) {
+      _videoPlayerController.dispose();
+      _chewieController.dispose();
+      _initializePlayer();
+    }
+  }
+
   Future<void> _initializePlayer() async {
+    // --- THE SECOND FIX IS HERE ---
+    // We must reset the loading state at the beginning of initialization.
+    // This ensures the loading spinner shows when switching between levels.
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+    }
+
     try {
       final ref = FirebaseStorage.instance.ref(widget.videoPath);
       final url = await ref.getDownloadURL();
@@ -37,7 +58,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> {
       _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
       await _videoPlayerController.initialize();
       
-      // 3. Create the Chewie controller after the video controller is initialized
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController,
         autoPlay: false,
@@ -47,9 +67,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> {
         showOptions: false,
         showControls: true,
         showControlsOnInitialize: false,
-        // You can add many other customizations here
-        // aspectRatio: 16 / 9,
-        // placeholder: const Center(child: CircularProgressIndicator()),
         errorBuilder: (context, errorMessage) {
           return Center(
             child: Text(
@@ -60,21 +77,26 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> {
         },
       );
 
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       print('Error initializing video player: $e');
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
     }
   }
 
   @override
   void dispose() {
-    // 4. IMPORTANT: Dispose of BOTH controllers to free up resources.
+    // This correctly disposes of the final set of controllers when the
+    // widget is removed from the screen permanently.
     _videoPlayerController.dispose();
     _chewieController.dispose();
     super.dispose();
@@ -89,7 +111,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer> {
       return const Center(child: Icon(Icons.error, color: Colors.red, size: 48));
     }
     
-    // 5. Instead of the basic VideoPlayer, return the Chewie widget.
     return Chewie(
       controller: _chewieController,
     );

@@ -5,7 +5,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
-import 'package:operation_sunrise/database/settings_controller.dart';
+import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:real_volume/real_volume.dart';
 
 import 'sounds.dart';
