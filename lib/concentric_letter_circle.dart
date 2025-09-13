@@ -431,10 +431,12 @@ class _ArcPainter extends CustomPainter {
       fontSize: 14,
       color: Colors.white.withOpacity(0.9),
       fontWeight: FontWeight.bold,
+      fontFamily: "EpundaSlab"
     );
     final subtitleStyle = TextStyle(
       fontSize: 10,
       color: Colors.white.withOpacity(0.7),
+      fontFamily: "EpundaSlab"
     );
 
     final List<Map<String, dynamic>> hintArcProperties = [

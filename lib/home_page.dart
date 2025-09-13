@@ -10,15 +10,11 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // We use .read here because we only need the controller to get the future.
-    // The Consumer below will handle rebuilding on updates.
     final levelController = context.read<LevelController>();
 
     return FutureBuilder(
-      // Wait for the signal that the first SERVER sync is complete.
       future: levelController.initializationComplete,
       builder: (context, snapshot) {
-        // While waiting for the signal, show a loading spinner.
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: Colors.black,
@@ -26,7 +22,6 @@ class HomePage extends StatelessWidget {
           );
         }
 
-        // If the initial load failed...
         if (snapshot.hasError) {
           return Scaffold(
             backgroundColor: Colors.black,
@@ -39,9 +34,6 @@ class HomePage extends StatelessWidget {
           );
         }
 
-        // --- Initial load is complete! ---
-        // Now we use a Consumer to listen for all subsequent updates,
-        // such as changing levels from the menu.
         return Consumer<LevelController>(
           builder: (context, controller, child) {
             if (controller.currentLevel == null) {
@@ -50,9 +42,14 @@ class HomePage extends StatelessWidget {
                 body: Center(child: Text('No levels found.', style: TextStyle(color: Colors.white))),
               );
             }
-            // This will build with the correct initial level from the notification,
-            // and will also correctly update when you change levels from the drawer.
-            return GameScreen(levelInfo: controller.currentLevel!);
+            // MODIFIED: Added a ValueKey.
+            // This key tells Flutter that if the level ID changes, it should
+            // create a brand new GameScreen widget with a fresh state,
+            // completely eliminating any visual glitches from the previous level.
+            return GameScreen(
+              key: ValueKey(controller.currentLevel!.id),
+              levelInfo: controller.currentLevel!,
+            );
           },
         );
       },

@@ -57,7 +57,7 @@ class _InfoDisplayState extends State<InfoDisplay> {
             _version,
             style: TextStyle(
               fontSize: 12,
-              fontFamily: 'Inter',
+              fontFamily: 'EpundaSlab',
               color: Colors.grey[700],
             ),
           ),
@@ -72,7 +72,7 @@ class _InfoDisplayState extends State<InfoDisplay> {
                     'Terms of Use',
                     style: TextStyle(
                       fontSize: 12,
-                      fontFamily: 'Inter',
+                      fontFamily: 'EpundaSlab',
                       color: Theme.of(context).colorScheme.primary,
                       decoration: TextDecoration.underline,
                     ),
@@ -82,7 +82,7 @@ class _InfoDisplayState extends State<InfoDisplay> {
                   ' • ',
                   style: TextStyle(
                     fontSize: 12,
-                    fontFamily: 'Inter',
+                    fontFamily: 'EpundaSlab',
                     color: Colors.grey[600],
                   ),
                 ),
@@ -93,7 +93,7 @@ class _InfoDisplayState extends State<InfoDisplay> {
                   'Privacy Policy',
                   style: TextStyle(
                     fontSize: 12,
-                    fontFamily: 'Inter',
+                    fontFamily: 'EpundaSlab',
                     color: Theme.of(context).colorScheme.primary,
                     decoration: TextDecoration.underline,
                   ),
@@ -107,7 +107,7 @@ class _InfoDisplayState extends State<InfoDisplay> {
               onTap: () => moneyController.restorePurchases(context),
               child: Text(
                 'Restore Purchases',
-                style: TextStyle(fontSize: 12, fontFamily: 'Inter'),
+                style: TextStyle(fontSize: 12, fontFamily: 'EpundaSlab'),
               ),
             ),
           ],

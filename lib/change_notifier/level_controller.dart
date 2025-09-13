@@ -120,6 +120,25 @@ class LevelController extends ChangeNotifier {
     }
   }
 
+  LevelInfo? advanceFrom(int completedLevelNumber) {
+    final completedIndex = levels.indexWhere((level) => level.levelNumber == completedLevelNumber);
+
+    // Check if the completed level was found and if a next level exists.
+    if (completedIndex != -1 && completedIndex + 1 < levels.length) {
+      // IMPORTANT: Update the master state to the new index.
+      _currentLevelIndex = completedIndex + 1;
+      
+      // Notify listeners so other parts of the UI (like the level select screen) are aware.
+      notifyListeners();
+      
+      // Return the data for the new, current level.
+      return levels[_currentLevelIndex];
+    }
+    
+    // No next level was found.
+    return null;
+  }
+
   Future<void> setupFCMListeners() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission();
