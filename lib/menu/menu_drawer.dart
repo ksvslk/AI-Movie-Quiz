@@ -22,7 +22,7 @@ class MenuDrawer extends StatelessWidget {
       // A deep, dark background color for the drawer
       canvasColor: const Color(0xFF1F1F1F),
       // An accent color for selected items, avatars, etc.
-      primaryColor: Colors.tealAccent[400],
+      primaryColor: const Color.fromARGB(255, 255, 200, 0),
       // Consistent styling for all ListTiles within the drawer
       listTileTheme: ListTileThemeData(
         iconColor: Colors.grey[400],
@@ -37,7 +37,7 @@ class MenuDrawer extends StatelessWidget {
       ),
       // Styling for circle avatars
       chipTheme: ChipThemeData(
-        backgroundColor: Colors.tealAccent[400],
+        backgroundColor: const Color.fromARGB(255, 255, 200, 0),
         labelStyle: const TextStyle(
           color: Colors.black,
           fontWeight: FontWeight.bold,
@@ -96,7 +96,7 @@ class MenuDrawer extends StatelessWidget {
                     },
                     secondary: const Icon(Icons.volume_up),
                     // Use a more vibrant color for the active switch
-                    activeColor: Theme.of(context).primaryColor,
+                    activeThumbColor: Theme.of(context).primaryColor,
                   );
                 },
               ),
@@ -111,7 +111,7 @@ class MenuDrawer extends StatelessWidget {
                     },
                     secondary: const Icon(Icons.auto_mode),
                     // Use a more vibrant color for the active switch
-                    activeColor: Theme.of(context).primaryColor,
+                    activeThumbColor: Theme.of(context).primaryColor,
                   );
                 },
               ),
@@ -126,7 +126,7 @@ class MenuDrawer extends StatelessWidget {
                     },
                     secondary: const Icon(Icons.loop),
                     // Use a more vibrant color for the active switch
-                    activeColor: Theme.of(context).primaryColor,
+                    activeThumbColor: Theme.of(context).primaryColor,
                   );
                 },
               ),

@@ -748,7 +748,7 @@ class _ArcPainter extends CustomPainter {
         final double maxGlowSize = strokeWidth * 0.4;
 
         final glowPaint = Paint()
-          ..color = Colors.yellow
+          ..color = const Color.fromARGB(255, 255, 166, 0)
               .withOpacity(1.0 - glowProgress) // Fades out
           ..style = PaintingStyle.stroke
           ..strokeWidth =

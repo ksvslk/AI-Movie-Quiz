@@ -208,7 +208,7 @@ class _GameScreenState extends State<GameScreen> {
                                         width: size,
                                         height: size,
                                         child: Lottie.asset(
-                                          'assets/animation/success.json',
+                                          'assets/animation/star.json',
                                           repeat: false,
                                         ),
                                       ),
