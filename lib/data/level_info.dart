@@ -6,6 +6,7 @@ class LevelInfo {
   final String name;
   final String path;
   final String characteristic;
+  final String sound;
   final Map<String, dynamic> hints;
 
   LevelInfo({
@@ -14,7 +15,8 @@ class LevelInfo {
     required this.name,
     required this.path,
     required this.hints,
-    required this.characteristic
+    required this.characteristic,
+    required this.sound
   });
 
   // A factory constructor to create a Level from a Firestore document
@@ -26,7 +28,8 @@ class LevelInfo {
       name: data['name'] ?? 'Unnamed Level',
       path: data['path'] ?? '',
       characteristic: data['characteristic'],
-      hints: data['hints']
+      hints: data['hints'],
+      sound: data['sound']
     );
   }
 }

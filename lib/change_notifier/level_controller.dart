@@ -19,6 +19,7 @@ class LevelController extends ChangeNotifier {
   String? _error;
   int _currentLevelIndex = 0;
   int? _pendingLevelNumberToOpen;
+  LevelInfo? lastLevelAdded;
 
   String? get error => _error;
   LevelInfo? get currentLevel =>
@@ -30,63 +31,90 @@ class LevelController extends ChangeNotifier {
   }
 
   void _listenToLevels() {
-    _levelsSubscription = _db
-        .collection('levels')
-        .orderBy('levelNumber')
-        .snapshots()
-        .listen(
-          (snapshot) {
-            print("[Debug] Firestore data received. Is from cache: ${snapshot.metadata.isFromCache}");
-            
-            try {
-              levels = snapshot.docs
-                  .map((doc) => LevelInfo.fromFirestore(doc))
-                  .toList();
-              _error = null;
+  _levelsSubscription = _db
+      .collection('levels')
+      .orderBy('levelNumber')
+      .snapshots()
+      .listen(
+        (snapshot) {
+          print("[Debug] Firestore data received. Number of changes: ${snapshot.docChanges.length}");
 
-              // --- THE FIX IS HERE ---
-              // If this is the first data event of any kind (cache or server),
-              // we complete the future. This unlocks the UI and ends the loading screen.
-              if (!_initialLoadCompleter.isCompleted) {
-                _initialLoadCompleter.complete();
-                print("[Debug] Initial load complete. UI is now unlocked.");
-              }
+          // --- KEY CHANGE IS HERE ---
+          // Instead of rebuilding the whole list from scratch, we process
+          // the individual changes that Firestore tells us about.
+          for (var change in snapshot.docChanges) {
+            switch (change.type) {
+              case DocumentChangeType.added:
+                final newLevel = LevelInfo.fromFirestore(change.doc);
 
-              // Now, we determine which level to show.
-              // We only process a pending notification link if we have fresh data from the server.
-              if (!snapshot.metadata.isFromCache) {
-                print("[Debug] Data is from server. Processing any pending notification taps.");
-                if (_processPendingLevel()) {
-                  // A pending level from a notification was found and handled.
+                // --- THIS IS THE FIX ---
+                // We only want to treat this as a "special event" if the initial
+                // load of levels is already complete.
+                if (_initialLoadCompleter.isCompleted) {
+                  // This is a TRUE new level that was added while the app was running.
+                  print("✅ REAL NEW LEVEL ADDED: Level ${newLevel.levelNumber} - '${newLevel.characteristic}'");
+                  lastLevelAdded = newLevel; // Or fire your Stream event here
                 } else {
-                  // No pending level, so fall back to the last played one.
-                  _findInitialLevel();
+                  // This is just part of the initial data load.
                 }
-              } else {
-                // If data is from cache, we don't process the pending level yet to avoid race conditions.
-                // We just load the last played level based on the cached data for now.
-                _findInitialLevel();
-              }
-              
-              notifyListeners();
-
-            } catch (e, stackTrace) {
-              _error = "Error parsing level data.";
-              if (!_initialLoadCompleter.isCompleted) {
-                _initialLoadCompleter.completeError(e);
-              }
-              notifyListeners();
+                
+                // IMPORTANT: We always add the level to our local list,
+                // regardless of whether it's an initial load or a new addition.
+                levels.add(newLevel);
+                break;
+                
+              case DocumentChangeType.modified:
+                // (This logic remains the same)
+                final modifiedLevel = LevelInfo.fromFirestore(change.doc);
+                print("🔄 LEVEL MODIFIED: Level ${modifiedLevel.levelNumber} - '${modifiedLevel.characteristic}'");
+                final index = levels.indexWhere((l) => l.id == modifiedLevel.id);
+                if (index != -1) {
+                  levels[index] = modifiedLevel;
+                }
+                break;
+                
+              case DocumentChangeType.removed:
+                // (This logic remains the same)
+                final removedLevel = LevelInfo.fromFirestore(change.doc);
+                print("❌ LEVEL REMOVED: Level ${removedLevel.levelNumber}");
+                levels.removeWhere((l) => l.id == removedLevel.id);
+                break;
             }
-          },
-          onError: (e) {
-            _error = "Failed to connect to levels data.";
-             if (!_initialLoadCompleter.isCompleted) {
-                _initialLoadCompleter.completeError(e);
-              }
-            notifyListeners();
-          },
-        );
-  }
+          }
+          
+          levels.sort((a, b) => a.levelNumber.compareTo(b.levelNumber));
+
+          _error = null;
+
+          // Your existing logic for completing the completer is perfect.
+          // It runs AFTER the loop above has processed the first batch.
+          if (!_initialLoadCompleter.isCompleted) {
+            _initialLoadCompleter.complete();
+            print("[Debug] Initial load complete. UI is now unlocked.");
+          }
+
+          // (The rest of your method remains the same)
+          if (!snapshot.metadata.isFromCache) {
+            if (_processPendingLevel()) {
+              // ...
+            } else {
+              _findInitialLevel();
+            }
+          } else {
+            _findInitialLevel();
+          }
+          
+          notifyListeners();
+        },
+        onError: (e) {
+          _error = "Failed to connect to levels data.";
+           if (!_initialLoadCompleter.isCompleted) {
+              _initialLoadCompleter.completeError(e);
+            }
+          notifyListeners();
+        },
+      );
+}
   
   // --- No other changes are needed in the rest of the file ---
 

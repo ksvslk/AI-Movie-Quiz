@@ -1,15 +1,23 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:operation_sunrise/data/settings_controller.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:lottie/lottie.dart';
+import 'package:operation_sunrise/data/settings_controller.dart'; // Assuming this path is correct for your project
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
-import 'package:lottie/lottie.dart';
 
 class LevelVideoPlayer extends StatefulWidget {
   final String videoPath;
+  final bool isSolved;
 
-  const LevelVideoPlayer({super.key, required this.videoPath});
+  const LevelVideoPlayer({
+    super.key,
+    required this.videoPath,
+    required this.isSolved,
+  });
 
   @override
   State<LevelVideoPlayer> createState() => _LevelVideoPlayerState();
@@ -71,11 +79,23 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
       curve: Curves.easeIn,
     );
     _loadingOpacityController.forward();
+
+    _loadingOpacityController.addStatusListener((status) {
+      if (status == AnimationStatus.dismissed) {
+        if (_settings.autoplayOn.value &&
+            _videoPlayerController.value.isInitialized) {
+          _videoPlayerController.play();
+        }
+      }
+    });
   }
 
   @override
   void didUpdateWidget(covariant LevelVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.isSolved) {
+      _chewieController?.setVolume(0.0);
+    }
     if (widget.videoPath != oldWidget.videoPath) {
       _initGeneration++;
       _videoPlayerController.dispose();
@@ -93,10 +113,50 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     }
   }
 
+  Future<void> _initializePlayer() async {
+    final int currentGeneration = _initGeneration;
+    try {
+      final ref = FirebaseStorage.instance.ref(widget.videoPath);
+      final url = await ref.getDownloadURL();
+      if (currentGeneration != _initGeneration || !mounted) return;
+
+      final file = await DefaultCacheManager().getSingleFile(url);
+
+      _videoPlayerController = VideoPlayerController.file(file);
+      await _videoPlayerController.initialize();
+
+      if (currentGeneration != _initGeneration || !mounted) {
+        _videoPlayerController.dispose();
+        return;
+      }
+
+      _onSoundsOnSettingChanged();
+      _chewieController = _createChewieController();
+
+      if (currentGeneration == _initGeneration && mounted) {
+        setState(() {
+          _isVideoInitialized = true;
+          if (_isAnimationTimePassed) {
+            _loadingOpacityController.reverse();
+            _videoOpacityController.forward();
+          }
+        });
+      }
+    } catch (e) {
+      print('Error initializing video player: $e');
+      if (currentGeneration == _initGeneration && mounted) {
+        setState(() {
+          _hasError = true;
+          _loadingOpacityController.reverse();
+        });
+      }
+    }
+  }
+
   ChewieController _createChewieController() {
     return ChewieController(
       videoPlayerController: _videoPlayerController,
-      autoPlay: _settings.autoplayOn.value,
+      autoPlay: false, // Manually controlled via animation listener
       looping: _settings.loopingOn.value,
       allowFullScreen: false,
       allowPlaybackSpeedChanging: false,
@@ -149,45 +209,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     }
   }
 
-  Future<void> _initializePlayer() async {
-    final int currentGeneration = _initGeneration;
-    try {
-      final ref = FirebaseStorage.instance.ref(widget.videoPath);
-      final url = await ref.getDownloadURL();
-      if (currentGeneration != _initGeneration || !mounted) return;
-      
-      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url));
-      await _videoPlayerController.initialize();
-      
-      if (currentGeneration != _initGeneration || !mounted) {
-        _videoPlayerController.dispose();
-        return;
-      }
-      
-      _onSoundsOnSettingChanged();
-
-      _chewieController = _createChewieController();
-
-      if (currentGeneration == _initGeneration && mounted) {
-        setState(() {
-          _isVideoInitialized = true;
-          if (_isAnimationTimePassed) {
-            _loadingOpacityController.reverse();
-            _videoOpacityController.forward();
-          }
-        });
-      }
-    } catch (e) {
-      print('Error initializing video player: $e');
-      if (currentGeneration == _initGeneration && mounted) {
-        setState(() {
-          _hasError = true;
-          _loadingOpacityController.reverse();
-        });
-      }
-    }
-  }
-
   void _startAnimationTimer() {
     Future.delayed(_minAnimationDuration, () {
       if (mounted) {
@@ -225,33 +246,48 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
       );
     }
     final bool isVideoReady = _isVideoInitialized && _isAnimationTimePassed;
+
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Video Player Layer
         if (_chewieController != null && isVideoReady)
           FadeTransition(
             opacity: _videoOpacityAnimation,
             child: Chewie(controller: _chewieController!),
           ),
-        
-        // Loading Animation Layer
+
         if (!isVideoReady || _loadingOpacityController.value > 0)
-          // FIX: Positioned.fill is now the direct child of the Stack
-          Positioned.fill(
-            // FIX: IgnorePointer is now inside Positioned.fill
-            child: IgnorePointer(
-              ignoring: isVideoReady,
-              child: FadeTransition(
-                opacity: _loadingOpacityAnimation,
+          IgnorePointer(
+            ignoring: isVideoReady,
+            child: FadeTransition(
+              opacity: _loadingOpacityAnimation,
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
                 child: Container(
-                  color: Colors.black,
+                  color: Colors.white,
                   child: Center(
-                    child: Lottie.asset(
-                      'assets/animation/panda_red.json',
-                      width: 300,
-                      height: 300,
+                    // --- CHANGED THIS SECTION ---
+                    // Use a Stack to layer the image and the panda animation.
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: <Widget>[
+                        // Layer 1: Your Image (will be in the back)
+                        Image.asset(
+                          'assets/images/cinema_screen.jpg', // <-- Your image path
+                          width: 640,
+                          height: 360,
+                          fit: BoxFit.cover, // Adjust the fit to your liking
+                        ),
+
+                        // Layer 2: Panda Animation (will be on top of the image)
+                        Lottie.asset(
+                          'assets/animation/panda_red.json',
+                          width: 300,
+                          height: 300,
+                        ),
+                      ],
                     ),
+                    // ---------------------------
                   ),
                 ),
               ),

@@ -3,7 +3,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:operation_sunrise/arc_button_painter.dart';
+import 'package:operation_sunrise/input_area/arc_button_painter.dart';
 
 class ArcButtonController extends StatefulWidget {
   final double radius;

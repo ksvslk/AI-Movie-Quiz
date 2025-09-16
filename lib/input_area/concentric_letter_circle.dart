@@ -1,24 +1,30 @@
 // concentric_letter_circle.dart
 
-// Final version incorporating the 4th arc button which is dynamically updated
-// based on a MoneyController and includes a title and subtitle on all arcs.
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:flutter/services.dart';
+import 'package:operation_sunrise/audio/audio_controller.dart';
+import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/change_notifier/game_controller.dart';
 import 'package:operation_sunrise/change_notifier/money_controller.dart';
-import 'package:operation_sunrise/quote_popup.dart';
+import 'package:operation_sunrise/input_area/quote_popup.dart';
 import 'package:provider/provider.dart';
 
-// A helper class to hold the results of our layout calculation.
-class _LayoutSolution {
-  final List<int> seatsPerRing;
-  final double buttonSize;
-  _LayoutSolution(this.seatsPerRing, this.buttonSize);
+// ~~~ HELPER CLASS FOR STATIC LAYOUT CALCULATION ~~~
+class _LayoutParticle {
+  final String letter;
+  double radius;
+  Offset position;
+
+  _LayoutParticle({
+    required this.letter,
+    required this.radius,
+    this.position = Offset.zero,
+  });
 }
 
-// ~~~ WIDGET 1: The Main ConcentricLetterCircle ~~~
-class ConcentricLetterCircle extends StatelessWidget {
+// ~~~ WIDGET 1: The Main ConcentricLetterCircle (FINAL STABLE LAYOUT) ~~~
+class ConcentricLetterCircle extends StatefulWidget {
   final Function(String) onLetterTapped;
   final VoidCallback onBackspaceTapped;
   final VoidCallback onClearAllTapped;
@@ -26,44 +32,10 @@ class ConcentricLetterCircle extends StatelessWidget {
   final VoidCallback onSymbolsTapped;
   final VoidCallback onSpaceTapped;
   final VoidCallback onHintTapped;
+  final String solutionString;
+  final String currentUserInput;
 
-  static const String _backspaceChar = '\u232B';
-
-  final List<String> _characterSet = [
-    'X',
-    'Q',
-    'Z',
-    'K',
-    'V',
-    'P',
-    'B',
-    'G',
-    'Y',
-    'F',
-    'M',
-    'C',
-    ':',
-    "'",
-    '-',
-    '2',
-    'J',
-    'U',
-    'W',
-    'L',
-    'D',
-    'R',
-    'H',
-    'S',
-    'N',
-    'I',
-    'O',
-    'A',
-    'T',
-    'E',
-    _backspaceChar,
-  ];
-
-  ConcentricLetterCircle({
+  const ConcentricLetterCircle({
     super.key,
     required this.onLetterTapped,
     required this.onBackspaceTapped,
@@ -72,42 +44,207 @@ class ConcentricLetterCircle extends StatelessWidget {
     required this.onSymbolsTapped,
     required this.onSpaceTapped,
     required this.onHintTapped,
+    required this.solutionString,
+    required this.currentUserInput,
   });
 
-  _LayoutSolution _findOptimalLayout(double maxRadius, int characterCount) {
-    _LayoutSolution bestSolution = _LayoutSolution([], 0.0);
-    const double minPadding = 4.0;
+  @override
+  State<ConcentricLetterCircle> createState() => _ConcentricLetterCircleState();
+}
 
-    for (int outerRingSeats = 22; outerRingSeats >= 10; outerRingSeats--) {
-      double sinVal = sin(pi / outerRingSeats);
-      double candidateButtonSize =
-          (2 * maxRadius * sinVal - minPadding) / (1 + sinVal);
-      if (candidateButtonSize < 15) continue;
-      List<int> ringCapacities = [];
-      int totalCapacity = 0;
-      double nextAvailableRadius = maxRadius;
-      while (nextAvailableRadius >= candidateButtonSize) {
-        double currentRingCenterRadius =
-            nextAvailableRadius - candidateButtonSize / 2;
-        if (currentRingCenterRadius <= 0) break;
-        double circumference = 2 * pi * currentRingCenterRadius;
-        int seatsInThisRing =
-            (circumference / (candidateButtonSize + minPadding)).floor();
-        if (seatsInThisRing < 3) break;
-        ringCapacities.add(seatsInThisRing);
-        totalCapacity += seatsInThisRing;
-        nextAvailableRadius -= (candidateButtonSize + minPadding);
-      }
-      if (totalCapacity >= characterCount &&
-          candidateButtonSize > bestSolution.buttonSize) {
-        bestSolution = _LayoutSolution(ringCapacities, candidateButtonSize);
+class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
+  static const String _backspaceChar = '\u232B';
+
+  // State variables for the stable layout
+  List<_LayoutParticle> _particles = [];
+  bool _isLayoutCalculated = false;
+
+  late List<String> _characterSet;
+  late Map<String, int> _frequencyMap;
+  late int _maxFrequency;
+
+  @override
+  void initState() {
+    super.initState();
+    _generateCharacterData();
+  }
+
+  @override
+  void didUpdateWidget(ConcentricLetterCircle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.solutionString != oldWidget.solutionString) {
+      // New puzzle, regenerate characters and mark the layout as needing recalculation.
+      _generateCharacterData();
+      setState(() {
+        _isLayoutCalculated = false;
+      });
+    }
+  }
+
+  /// Prepares the list of characters for the keyboard.
+  void _generateCharacterData() {
+    // Define the valid characters to extract from the solution string.
+    // The hyphen '-' is at the end to be treated as a literal character.
+    final validCharsRegex = RegExp(r'[A-Z:,.!?-]');
+
+    // Extract the unique, valid characters from the solution.
+    // This set is now the ONLY source for the keyboard buttons.
+    final uniqueSolutionChars = widget.solutionString
+        .toUpperCase()
+        .runes
+        .map((r) => String.fromCharCode(r))
+        .where((s) => validCharsRegex.hasMatch(s))
+        .toSet();
+
+    // Calculate the frequency of characters for button sizing. This is still needed.
+    final frequencyMap = <String, int>{};
+    for (var char in widget.solutionString.toUpperCase().runes) {
+      final charStr = String.fromCharCode(char);
+      if (uniqueSolutionChars.contains(charStr)) {
+        frequencyMap.update(charStr, (value) => value + 1, ifAbsent: () => 1);
       }
     }
-    return bestSolution;
+    final maxFrequency =
+        frequencyMap.values.fold(0, (prev, element) => max(prev, element));
+
+    // Create the character set directly from the unique solution characters.
+    List<String> characterSet = uniqueSolutionChars.toList();
+
+    // --- All filler logic has been removed. ---
+
+    // Shuffle the required characters and add the backspace button.
+    characterSet.shuffle();
+    characterSet.add(_backspaceChar);
+
+    // Update the state.
+    _characterSet = characterSet;
+    _frequencyMap = frequencyMap;
+    _maxFrequency = maxFrequency;
+  }
+
+
+  /// Performs a one-time, intensive calculation to find the final static positions.
+  void _calculateAndStoreLayout(double containerRadius, double averageButtonSize) {
+    final List<_LayoutParticle> particles = _characterSet.map((letter) {
+      double sizeMultiplier = 1.0;
+      if (letter == _backspaceChar) {
+        sizeMultiplier = 1.15;
+      } else {
+        final int frequency = _frequencyMap[letter] ?? 0;
+        final double freqRatio =
+            (_maxFrequency > 0) ? frequency / _maxFrequency : 0;
+        const double baseMultiplier = 0.85;
+        const double multiplierRange = 0.30;
+        sizeMultiplier = baseMultiplier + (freqRatio * multiplierRange);
+      }
+      return _LayoutParticle(
+        letter: letter,
+        radius: (averageButtonSize / 2.0) * sizeMultiplier,
+      );
+    }).toList();
+
+    _runPackingSimulation(particles, containerRadius);
+
+    // Save the final layout to the state.
+    setState(() {
+      _particles = particles;
+      _isLayoutCalculated = true;
+    });
+  }
+
+  /// Runs a headless simulation to find stable, padded positions.
+  void _runPackingSimulation(
+      List<_LayoutParticle> particles, double containerRadius) {
+    if (particles.isEmpty || containerRadius <= 0) return;
+
+    const double padding = 6.0; // INCREASED PADDING
+    final random = Random();
+    for (var p in particles) {
+      p.position = Offset.fromDirection(random.nextDouble() * 2 * pi, 1.0);
+    }
+
+    // Phase 1: Relax particles.
+    int iterations = 100;
+    for (int i = 0; i < iterations; i++) {
+      for (int j = 0; j < particles.length; j++) {
+        final p1 = particles[j];
+        for (int k = j + 1; k < particles.length; k++) {
+          final p2 = particles[k];
+          final delta = p2.position - p1.position;
+          double distance = delta.distance;
+          final minDistance = p1.radius + p2.radius + padding;
+          if (distance < minDistance) {
+            final overlap = minDistance - distance;
+            if (distance == 0.0) {
+              p1.position -= Offset.fromDirection(random.nextDouble() * 2 * pi, 0.1);
+            } else {
+              final direction = delta / distance;
+              p1.position -= direction * overlap * 0.5;
+              p2.position += direction * overlap * 0.5;
+            }
+          }
+        }
+        p1.position *= 0.98;
+      }
+    }
+
+    // Phase 2: Scale the cluster to perfectly fit.
+    double clusterRadius = 0;
+    for (final p in particles) {
+      clusterRadius = max(clusterRadius, p.position.distance + p.radius);
+    }
+    if (clusterRadius > 0) {
+      final double scaleFactor = containerRadius / clusterRadius;
+      for (final p in particles) {
+        p.position *= scaleFactor;
+        p.radius *= scaleFactor;
+      }
+    }
+
+    // Phase 3: Final relaxation pass.
+    iterations = 50;
+    for (int i = 0; i < iterations; i++) {
+      for (int j = 0; j < particles.length; j++) {
+        final p1 = particles[j];
+        for (int k = j + 1; k < particles.length; k++) {
+          final p2 = particles[k];
+          final delta = p2.position - p1.position;
+          double distance = delta.distance;
+          final minDistance = p1.radius + p2.radius + padding;
+          if (distance < minDistance) {
+            final overlap = minDistance - distance;
+            if (distance != 0.0) {
+              final direction = delta / distance;
+              p1.position -= direction * overlap * 0.5;
+              p2.position += direction * overlap * 0.5;
+            }
+          }
+        }
+        if (p1.position.distance > containerRadius - p1.radius) {
+          p1.position =
+              p1.position / p1.position.distance * (containerRadius - p1.radius);
+        }
+      }
+    }
+  }
+
+  Map<String, int> _calculateFrequency(String text) {
+    final counts = <String, int>{};
+    for (var char in text.toUpperCase().runes) {
+      final charStr = String.fromCharCode(char);
+      // Use the updated RegExp here as well.
+      if (charStr.contains(RegExp(r'[A-Z:,.!?-]'))) {
+        counts.update(charStr, (value) => value + 1, ifAbsent: () => 1);
+      }
+    }
+    return counts;
   }
 
   @override
   Widget build(BuildContext context) {
+    final requiredCounts = _calculateFrequency(widget.solutionString);
+    final usedCounts = _calculateFrequency(widget.currentUserInput);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         const double maxDiameter = 500.0;
@@ -115,78 +252,74 @@ class ConcentricLetterCircle extends StatelessWidget {
           maxDiameter,
           min(constraints.maxWidth, constraints.maxHeight),
         );
-        if (effectiveDiameter <= 0) return const SizedBox.shrink();
-
-        final List<Widget> allLetterWidgets = [];
-        int characterIndex = 0;
+        if (effectiveDiameter <= 0 || _characterSet.isEmpty) {
+          return const SizedBox.shrink();
+        }
 
         const double arcStrokeWidth = 35.0;
-        const double desiredPadding = 4.0;
         final double totalAvailableRadius = effectiveDiameter / 2;
-
         final double arcRingInnerRadius = totalAvailableRadius - arcStrokeWidth;
-        final double maxRadiusForLetters = arcRingInnerRadius - desiredPadding;
+        final double maxRadiusForLetters = arcRingInnerRadius - 4.0;
+        
+        final double averageButtonSize = max(30.0, min(effectiveDiameter / 10, 45.0));
 
-        final _LayoutSolution solution = _findOptimalLayout(
-          maxRadiusForLetters,
-          _characterSet.length,
+        final arcController = ArcButtonController(
+          radius: totalAvailableRadius,
+          strokeWidth: arcStrokeWidth,
+          onShiftTapped: widget.onShiftTapped,
+          onSymbolsTapped: widget.onSymbolsTapped,
+          onSpaceTapped: widget.onSpaceTapped,
+          onHintTapped: widget.onHintTapped,
         );
-        final List<int> ringCapacities = solution.seatsPerRing;
-        final double uniformButtonSize = solution.buttonSize;
-
-        if (ringCapacities.isEmpty || uniformButtonSize <= 0)
-          return const SizedBox.shrink();
-
-        allLetterWidgets.add(
-          ArcButtonController(
-            radius: totalAvailableRadius,
-            strokeWidth: arcStrokeWidth,
-            onShiftTapped: onShiftTapped,
-            onSymbolsTapped: onSymbolsTapped,
-            onSpaceTapped: onSpaceTapped,
-            onHintTapped: onHintTapped,
-          ),
-        );
-
-        double nextAvailableRadius = maxRadiusForLetters;
-
-        for (int i = 0; i < ringCapacities.length; i++) {
-          final int capacityOfThisRing = ringCapacities[i];
-          final int remainingChars = _characterSet.length - characterIndex;
-          final int numSeatsOnThisLayer = min(
-            capacityOfThisRing,
-            remainingChars,
+        
+        // If layout is not calculated yet, do it once after the first frame.
+        if (!_isLayoutCalculated) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _calculateAndStoreLayout(maxRadiusForLetters, averageButtonSize);
+            }
+          });
+          
+          // Render the outer controls while the layout calculates.
+          return Center(
+            child: SizedBox(
+              width: effectiveDiameter,
+              height: effectiveDiameter,
+              child: Stack(alignment: Alignment.center, children: [arcController]),
+            ),
           );
+        }
+        
+        // If layout is ready, build the widgets from the stable particle list.
+        final List<Widget> allLetterWidgets = [arcController];
 
-          if (numSeatsOnThisLayer == 0) break;
+        for (int i = 0; i < _particles.length; i++) {
+          final particle = _particles[i];
+          final isRequired = requiredCounts.containsKey(particle.letter);
+          final isVisible = !isRequired ||
+              (usedCounts[particle.letter] ?? 0) <
+                  (requiredCounts[particle.letter] ?? 0);
 
-          final double currentRadius =
-              nextAvailableRadius - (uniformButtonSize / 2);
-          final double anglePerLetter = (2 * pi) / numSeatsOnThisLayer;
-          final double angleOffset = (i % 2 != 0) ? 0.0 : anglePerLetter / 2;
-
-          for (int j = 0; j < numSeatsOnThisLayer; j++) {
-            final String letter = _characterSet[characterIndex];
-            final double angle = angleOffset + (j * anglePerLetter);
-            final double x = cos(angle) * currentRadius;
-            final double y = sin(angle) * currentRadius;
-
-            allLetterWidgets.add(
-              Transform.translate(
-                offset: Offset(x, y),
-                child: _LetterCircleButton(
-                  letter: letter,
-                  size: uniformButtonSize,
-                  onLetterTapped: onLetterTapped,
-                  onBackspaceTapped: onBackspaceTapped,
-                  onClearAllTapped: onClearAllTapped,
+          allLetterWidgets.add(
+            Transform.translate(
+              offset: particle.position,
+              child: IgnorePointer(
+                ignoring: !isVisible,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 300),
+                  opacity: isVisible ? 1.0 : 0.0,
+                  child: _LetterCircleButton(
+                    letter: particle.letter,
+                    size: particle.radius * 2,
+                    animationIndex: i, // <-- PASS THE INDEX HERE
+                    onLetterTapped: widget.onLetterTapped,
+                    onBackspaceTapped: widget.onBackspaceTapped,
+                    onClearAllTapped: widget.onClearAllTapped,
+                  ),
                 ),
               ),
-            );
-            characterIndex++;
-          }
-          const double minPadding = 4.0;
-          nextAvailableRadius -= (uniformButtonSize + minPadding);
+            ),
+          );
         }
 
         return Center(
@@ -207,37 +340,80 @@ class ConcentricLetterCircle extends StatelessWidget {
   }
 }
 
-// ~~~ WIDGET 2: A Stateless Button with InkWell Feedback ~~~
-
-class _LetterCircleButton extends StatelessWidget {
+// ~~~ WIDGET 2: A Stateful Button with an Entrance Animation ~~~
+class _LetterCircleButton extends StatefulWidget {
   final String letter;
   final double size;
   final Function(String) onLetterTapped;
   final VoidCallback onBackspaceTapped;
   final VoidCallback onClearAllTapped;
+  final int animationIndex; // New property for staggered animation
+
   static const String _backspaceChar = '\u232B';
 
   const _LetterCircleButton({
+    super.key,
     required this.letter,
     required this.size,
     required this.onLetterTapped,
     required this.onBackspaceTapped,
     required this.onClearAllTapped,
+    required this.animationIndex,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final bool isBackspace = letter == _backspaceChar;
+  State<_LetterCircleButton> createState() => _LetterCircleButtonState();
+}
 
-    final Color seatBackColor = isBackspace
-        ? Colors.pink.shade800
-        : Colors.redAccent.shade400;
+class _LetterCircleButtonState extends State<_LetterCircleButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 450),
+      vsync: this,
+    );
+
+    _scaleAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.elasticOut, // A fun, bouncy curve
+    );
+
+    final audioController = context.read<AudioController>();
+
+    // Stagger the animation start time based on the index
+    final delay = Duration(milliseconds: 50 + (widget.animationIndex * 40));
+    Future.delayed(delay, () {
+      if (mounted) {
+        audioController.playSfx(SfxType.snapclick);
+        _controller.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isBackspace = widget.letter == _LetterCircleButton._backspaceChar;
+    final audioController = context.read<AudioController>();
+
+    // --- The visual code is the same, just using `widget.` to access properties ---
+    final Color seatBackColor =
+        isBackspace ? Colors.pink.shade800 : Colors.redAccent.shade400;
     final Color seatBaseColor = isBackspace
         ? Colors.pink.shade900.withOpacity(0.8)
         : Colors.redAccent;
-    final Color armrestColor = isBackspace
-        ? Colors.pink.shade900
-        : Colors.redAccent.shade700;
+    final Color armrestColor =
+        isBackspace ? Colors.pink.shade900 : Colors.redAccent.shade700;
 
     final seatBackDecoration = BoxDecoration(
       color: seatBackColor,
@@ -247,6 +423,51 @@ class _LetterCircleButton extends StatelessWidget {
     );
     final armrestDecoration = BoxDecoration(color: armrestColor);
 
+    Widget letterContent;
+
+    if (isBackspace) {
+      letterContent = Icon(
+        Icons.backspace_outlined,
+        color: Colors.white70,
+        size: widget.size * 0.5,
+      );
+    } else {
+      final double finalFontSize = widget.size * 0.70;
+
+      final textStyle = TextStyle(
+        color: Colors.white,
+        fontSize: finalFontSize,
+        fontWeight: FontWeight.bold,
+        shadows: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      );
+
+      final painter = TextPainter(
+        text: TextSpan(text: widget.letter, style: textStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final textWidth = painter.width;
+      final maxWidth = widget.size * 0.75;
+      double scale = 1.0;
+      if (textWidth > maxWidth) {
+        scale = maxWidth / textWidth;
+      }
+
+      letterContent = Transform.scale(
+        scale: scale,
+        child: Text(
+          widget.letter,
+          style: textStyle,
+        ),
+      );
+    }
+
     final buttonVisuals = Container(
       color: seatBaseColor,
       child: Stack(
@@ -255,7 +476,7 @@ class _LetterCircleButton extends StatelessWidget {
           Row(
             children: [
               SizedBox(
-                width: size * 0.15,
+                width: widget.size * 0.15,
                 child: Column(
                   children: [
                     Expanded(
@@ -278,7 +499,7 @@ class _LetterCircleButton extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: size * 0.15,
+                width: widget.size * 0.15,
                 child: Column(
                   children: [
                     Expanded(
@@ -291,75 +512,61 @@ class _LetterCircleButton extends StatelessWidget {
               ),
             ],
           ),
-          if (isBackspace)
-            Icon(
-              Icons.backspace_outlined,
-              color: Colors.white70,
-              size: size * 0.5,
-            )
-          else
-            Text(
-              letter,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: size * 0.55,
-                fontWeight: FontWeight.bold,
-                shadows: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
-                    blurRadius: 2,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-            ),
+          letterContent,
         ],
       ),
     );
 
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Material(
-        elevation: 2.0,
-        shadowColor: Colors.black.withOpacity(0.5),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(size * 0.45),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            buttonVisuals,
-            Material(
-              type: MaterialType.transparency,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(size * 0.45),
-                highlightColor: Colors.white.withOpacity(0.25),
-                splashColor: Colors.white.withOpacity(0.2),
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  if (isBackspace) {
-                    onBackspaceTapped();
-                  } else {
-                    onLetterTapped(letter);
-                  }
-                },
-                onLongPress: () {
-                  if (isBackspace) {
-                    HapticFeedback.lightImpact();
-                    onClearAllTapped();
-                  }
-                },
+    // --- The root of the widget is now wrapped in a ScaleTransition ---
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: Material(
+          elevation: 2.0,
+          shadowColor: Colors.black.withOpacity(0.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(widget.size * 0.45),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              buttonVisuals,
+              Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(widget.size * 0.45),
+                  highlightColor: Colors.white.withOpacity(0.25),
+                  splashColor: Colors.white.withOpacity(0.2),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    if (isBackspace) {
+                      audioController.playSfx(SfxType.erase);
+                      widget.onBackspaceTapped();
+                    } else {
+                      audioController.playSfx(SfxType.select);
+                      widget.onLetterTapped(widget.letter);
+                    }
+                  },
+                  onLongPress: () {
+                    if (isBackspace) {
+                      audioController.playSfx(SfxType.eraseAll);
+                      HapticFeedback.lightImpact();
+                      widget.onClearAllTapped();
+                    }
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ~~~ WIDGET 3: The Arc Button Controller ~~~
+// ~~~ WIDGET 3: The Arc Button Controller (UNCHANGED) ~~~
 
 enum _TappedArc { none, symbols, shift, space, hint }
 
@@ -372,14 +579,14 @@ class ArcButtonController extends StatefulWidget {
   final VoidCallback onHintTapped;
 
   const ArcButtonController({
-    Key? key,
+    super.key,
     required this.radius,
     required this.strokeWidth,
     required this.onShiftTapped,
     required this.onSymbolsTapped,
     required this.onSpaceTapped,
     required this.onHintTapped,
-  }) : super(key: key);
+  });
 
   @override
   State<ArcButtonController> createState() => _ArcButtonControllerState();
@@ -392,7 +599,6 @@ class _ArcButtonControllerState extends State<ArcButtonController>
   _TappedArc _tappedArc = _TappedArc.none;
   Offset? _tapPosition;
 
-  // State for the reveal animation
   _TappedArc _revealingArc = _TappedArc.none;
   late List<bool> _lastRevealedState;
   bool _isFirstBuild = true;
@@ -424,7 +630,7 @@ class _ArcButtonControllerState extends State<ArcButtonController>
     });
 
     _revealAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
     _revealAnimationController.addListener(() => setState(() {}));
@@ -447,9 +653,8 @@ class _ArcButtonControllerState extends State<ArcButtonController>
   void _checkForHintReveals(GameController game) {
     if (!mounted) return;
 
-    final currentRevealedState = game.availableHints
-        .map((h) => h.isRevealed)
-        .toList();
+    final currentRevealedState =
+        game.availableHints.map((h) => h.isRevealed).toList();
 
     if (_isFirstBuild) {
       _lastRevealedState = currentRevealedState;
@@ -463,7 +668,6 @@ class _ArcButtonControllerState extends State<ArcButtonController>
     }
 
     for (int i = 0; i < currentRevealedState.length; i++) {
-      // If a hint was just revealed (went from false to true)
       if (currentRevealedState[i] && !_lastRevealedState[i]) {
         if (i < _hintArcTypes.length) {
           setState(() {
@@ -502,29 +706,32 @@ class _ArcButtonControllerState extends State<ArcButtonController>
     final bool isHintTappable = angleDeg >= 275 && angleDeg <= 355;
 
     _TappedArc tappedArc;
-    if (isSymbolsTappable)
+    if (isSymbolsTappable) {
       tappedArc = _TappedArc.symbols;
-    else if (isShiftTappable)
+    } else if (isShiftTappable) {
       tappedArc = _TappedArc.shift;
-    else if (isSpaceTappable)
+    } else if (isSpaceTappable) {
       tappedArc = _TappedArc.space;
-    else if (isHintTappable)
+    } else if (isHintTappable) {
       tappedArc = _TappedArc.hint;
-    else
+    } else {
       return;
+    }
 
-    // --- NEW: Handle taps on revealed quotes ---
     const int longHintThreshold = 20;
     final hintIndex = _hintArcTypes.indexOf(tappedArc);
 
     if (hintIndex != -1 && hintIndex < game.availableHints.length) {
       final hint = game.availableHints[hintIndex];
-      if (hint.isRevealed) {
+      if (hint.isRevealed || money.isSubscribed()) {
         if (hint.value.length > longHintThreshold) {
           HapticFeedback.mediumImpact();
           showDialog(
             context: context,
-            builder: (ctx) => QuotePopup(quote: hint.value, title: hint.label,),
+            builder: (ctx) => QuotePopup(
+              quote: hint.value,
+              title: hint.label,
+            ),
           );
           setState(() {
             _tappedArc = tappedArc;
@@ -532,10 +739,9 @@ class _ArcButtonControllerState extends State<ArcButtonController>
           });
           _animationController.forward(from: 0.0);
         }
-        return; // Do nothing more for any revealed hint (quote or char)
+        return;
       }
     }
-    // --- End new logic ---
 
     if (_animationController.isAnimating) return;
 
@@ -598,7 +804,7 @@ class _ArcButtonControllerState extends State<ArcButtonController>
   }
 }
 
-// ~~~ WIDGET 4: The Custom Painter (with Subtitles) ~~~
+// ~~~ WIDGET 4: The Custom Painter (with Subtitles) (UNCHANGED) ~~~
 class _ArcPainter extends CustomPainter {
   final double strokeWidth;
   final _TappedArc tappedArc;
@@ -633,7 +839,6 @@ class _ArcPainter extends CustomPainter {
     const baseGreen = Color(0xFF195d19);
     const highlightGreen = Color(0xFF2aa12a);
     const disabledColor = Color(0xFF444444);
-    // NEW Colors for tappable revealed hints
     const tappableQuoteColor = Color.fromARGB(255, 28, 45, 54);
     const tappableQuoteHighlight = Color(0xFF2aa1a1);
 
@@ -682,9 +887,8 @@ class _ArcPainter extends CustomPainter {
             'text': isLongHint ? 'SHOW QUOTE' : hint.value,
             'subtitle': null,
             'baseColor': isLongHint ? tappableQuoteColor : disabledColor,
-            'highlightColor': isLongHint
-                ? tappableQuoteHighlight
-                : highlightRed,
+            'highlightColor':
+                isLongHint ? tappableQuoteHighlight : highlightRed,
           });
         } else {
           arcSections.add({
@@ -748,14 +952,13 @@ class _ArcPainter extends CustomPainter {
         final double maxGlowSize = strokeWidth * 0.4;
 
         final glowPaint = Paint()
-          ..color = const Color.fromARGB(255, 255, 166, 0)
-              .withOpacity(1.0 - glowProgress) // Fades out
+          ..color = const Color.fromARGB(117, 255, 251, 0)
+              .withOpacity(1.0 - glowProgress)
           ..style = PaintingStyle.stroke
           ..strokeWidth =
-              strokeWidth +
-              (maxGlowSize * glowProgress) // Expands
+              strokeWidth + (maxGlowSize * glowProgress)
           ..strokeCap = StrokeCap.round
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8.0); // Glow
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0);
 
         canvas.drawArc(
           Rect.fromCircle(center: center, radius: baseRadius),
@@ -811,34 +1014,52 @@ class _ArcPainter extends CustomPainter {
     required double sweepAngle,
     required bool isUpsideDown,
   }) {
-    if (radius <= 0) return;
+    if (radius <= 0 || text.isEmpty) return;
 
-    final String effectiveText = isUpsideDown
-        ? text.split('').reversed.join('')
-        : text;
-    double totalTextAngle = 0;
+    // --- 1. Measurement Pass ---
+    // First, measure the text with the initial font size to see if it fits.
+    double initialTotalAngle = 0;
+    for (int i = 0; i < text.length; i++) {
+      final painter = TextPainter(
+        text: TextSpan(text: text[i], style: style),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final asinValue = painter.width / (2 * radius);
+      if (asinValue.abs() > 1) { return; } // Avoid math errors
+      initialTotalAngle += 2 * asin(asinValue);
+    }
+
+    // --- 2. Determine Final Font Size ---
+    // If the text is too long, calculate a new smaller font size.
+    TextStyle effectiveStyle = style;
+    if (initialTotalAngle > sweepAngle && style.fontSize != null) {
+      // Add a little padding by targeting 95% of the sweep angle
+      final double scaleFactor = (sweepAngle * 0.95) / initialTotalAngle;
+      effectiveStyle = style.copyWith(fontSize: style.fontSize! * scaleFactor);
+    }
+    
+    // --- 3. Drawing Pass ---
+    // Now, build the final painters and draw the text using the effective style.
+    final String effectiveText =
+        isUpsideDown ? text.split('').reversed.join('') : text;
+    double finalTotalAngle = 0;
     final List<TextPainter> charPainters = [];
 
     for (int i = 0; i < effectiveText.length; i++) {
       final painter = TextPainter(
-        text: TextSpan(text: effectiveText[i], style: style),
+        text: TextSpan(text: effectiveText[i], style: effectiveStyle),
         textDirection: TextDirection.ltr,
       )..layout();
       charPainters.add(painter);
 
       final asinValue = painter.width / (2 * radius);
-      if (asinValue.abs() > 1) {
-        return;
-      }
-      totalTextAngle += 2 * asin(asinValue);
+      if (asinValue.abs() > 1) { return; } // Avoid math errors
+      finalTotalAngle += 2 * asin(asinValue);
     }
 
-    if (totalTextAngle > sweepAngle) {
-      return;
-    }
-
+    // Center the text within the arc using the final calculated angle.
     final double centeredStartAngle =
-        startAngle + (sweepAngle - totalTextAngle) / 2;
+        startAngle + (sweepAngle - finalTotalAngle) / 2;
     double currentAngle = 0;
 
     for (int i = 0; i < charPainters.length; i++) {

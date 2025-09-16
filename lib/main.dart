@@ -1,6 +1,8 @@
 // lib/main.dart
 
 import 'dart:io';
+import 'dart:math';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +31,41 @@ import 'package:operation_sunrise/change_notifier/money_controller.dart';
 import 'package:operation_sunrise/data/local_storage_settings_persistence.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/audio/audio_controller.dart';
+
+// --- NEW: Moved from AuthGate ---
+/// Tries to sign in the user anonymously with an exponential backoff retry strategy.
+Future<void> signInAnonymouslyWithRetry() async {
+  if (FirebaseAuth.instance.currentUser != null) {
+    dev.log('User already signed in.');
+    return;
+  }
+
+  const maxRetries = 5;
+  const initialDelay = Duration(seconds: 1);
+  const maxJitter = Duration(milliseconds: 500);
+  final random = Random();
+
+  for (int attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      dev.log('Attempting to sign in anonymously (Attempt ${attempt + 1})...');
+      await FirebaseAuth.instance.signInAnonymously();
+      dev.log('Successfully signed in anonymously.');
+      return; // Success
+    } on FirebaseAuthException catch (e) {
+      dev.log('Failed to sign in (Attempt ${attempt + 1}/$maxRetries): ${e.code}', level: Level.WARNING.value, error: e);
+      if (attempt == maxRetries - 1) {
+        dev.log('Max sign-in retries reached. Failing permanently.', level: Level.SEVERE.value);
+        rethrow; // Re-throw the last exception
+      }
+      final backoffTime = initialDelay * pow(2, attempt);
+      final jitter = Duration(milliseconds: random.nextInt(maxJitter.inMilliseconds));
+      final totalDelay = backoffTime + jitter;
+      dev.log('Waiting for ${totalDelay.inMilliseconds}ms before next retry.');
+      await Future.delayed(totalDelay);
+    }
+  }
+}
+// --- END NEW SECTION ---
 
 Future<void> setUpRemoteConfig() async {
   final remoteConfig = FirebaseRemoteConfig.instance;
@@ -61,7 +98,6 @@ Future<void> initPlatformState() async {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
 }
 
 // --- Main App Entry Point ---
@@ -80,8 +116,18 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FirebaseAppCheck.instance.activate(
     androidProvider: AndroidProvider.debug,
-    appleProvider: AppleProvider.appAttest,
+    appleProvider: AppleProvider.debug,
   );
+
+    // --- NEW: Perform anonymous sign-in right after App Check ---
+  try {
+    await signInAnonymouslyWithRetry();
+  } catch (e) {
+    dev.log('Anonymous sign-in failed after all retries. The app will show an error screen.', error: e, level: Level.SEVERE.value);
+    // We will let the app continue to run. The AuthGate will see
+    // that `currentUser` is null and show the error screen.
+  }
+  // --- END NEW SECTION ---
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);

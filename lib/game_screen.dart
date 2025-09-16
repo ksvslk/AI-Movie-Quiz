@@ -3,15 +3,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
+import 'package:operation_sunrise/audio/audio_controller.dart';
+import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/change_notifier/ads_controller.dart';
 import 'package:operation_sunrise/change_notifier/game_controller.dart';
 import 'package:operation_sunrise/change_notifier/level_controller.dart';
-import 'package:operation_sunrise/concentric_letter_circle.dart';
+import 'package:operation_sunrise/input_area/concentric_letter_circle.dart';
 import 'package:operation_sunrise/data/level_info.dart';
 import 'package:operation_sunrise/menu/menu_drawer.dart';
 import 'dart:math';
 import 'package:provider/provider.dart';
-import 'level_video_player.dart';
+import 'video/level_video_player.dart';
 
 class GameScreen extends StatefulWidget {
   final LevelInfo levelInfo;
@@ -54,6 +56,24 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
+  void _onNewLevelAdded() {
+    if (mounted) {
+      final levelController = context.read<LevelController>();
+      final level = levelController.lastLevelAdded;
+      if (level != null) {
+        levelController.lastLevelAdded = null;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'New level added - ${level.levelNumber}. ${level.characteristic}!',
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
   void _onGameControllerUpdate() {
     if (_gameController.isSolved && !_isAnimatingSuccess && mounted) {
       setState(() {
@@ -84,7 +104,13 @@ class _GameScreenState extends State<GameScreen> {
   @override
   void initState() {
     super.initState();
-    _gameController = GameController(levelInfo: widget.levelInfo);
+    final audioController = context.read<AudioController>();
+    final levelController = context.read<LevelController>();
+    levelController.addListener(_onNewLevelAdded);
+    _gameController = GameController(
+      levelInfo: widget.levelInfo,
+      audioController: audioController,
+    );
     _gameController.addListener(_onGameControllerUpdate);
   }
 
@@ -95,8 +121,12 @@ class _GameScreenState extends State<GameScreen> {
       _greenAnimationTimer?.cancel();
       _gameController.removeListener(_onGameControllerUpdate);
       _gameController.dispose();
+      final audioController = context.read<AudioController>();
 
-      _gameController = GameController(levelInfo: widget.levelInfo);
+      _gameController = GameController(
+        levelInfo: widget.levelInfo,
+        audioController: audioController,
+      );
       _gameController.addListener(_onGameControllerUpdate);
 
       setState(() {
@@ -150,9 +180,9 @@ class _GameScreenState extends State<GameScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Hint not available right now. Please try again later.',
+            'Hint unavailable. Try again later or avoid interruptiongs with Premium.',
           ),
-          duration: Duration(seconds: 2),
+          duration: Duration(seconds: 4),
         ),
       );
       ads.reloadRewardedAd();
@@ -173,7 +203,10 @@ class _GameScreenState extends State<GameScreen> {
                 children: [
                   Expanded(
                     flex: 4,
-                    child: LevelVideoPlayer(videoPath: widget.levelInfo.path),
+                    child: LevelVideoPlayer(
+                      videoPath: widget.levelInfo.path,
+                      isSolved: controller.isSolved,
+                    ),
                   ),
                   _buildSolutionField(context, controller),
                   Expanded(
@@ -192,13 +225,14 @@ class _GameScreenState extends State<GameScreen> {
                             duration: const Duration(milliseconds: 500),
                             switchInCurve: Curves.easeInOut,
                             switchOutCurve: Curves.easeInOut,
-                            transitionBuilder: (Widget child, Animation<double> animation) {
-                              // Simple fade transition
-                              return FadeTransition(
-                                opacity: animation,
-                                child: child,
-                              );
-                            },
+                            transitionBuilder:
+                                (Widget child, Animation<double> animation) {
+                                  // Simple fade transition
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  );
+                                },
                             child: controller.isSolved
                                 ? Center(
                                     key: const ValueKey('solved'),
@@ -226,6 +260,10 @@ class _GameScreenState extends State<GameScreen> {
                                       onShiftTapped: () => _onHintTapped(1),
                                       onSpaceTapped: () => _onHintTapped(2),
                                       onHintTapped: () {},
+                                      solutionString:
+                                          controller.displaySolution,
+                                      currentUserInput: controller.userInput
+                                          .toString(),
                                     ),
                                   ),
                           );
@@ -252,8 +290,7 @@ class _GameScreenState extends State<GameScreen> {
         ),
         drawerEnableOpenDragGesture: false,
         endDrawerEnableOpenDragGesture: false,
-        floatingActionButtonLocation:
-            FloatingActionButtonLocation.miniEndDocked,
+        floatingActionButtonLocation: FloatingActionButtonLocation.miniEndFloat,
       ),
     );
   }
@@ -384,13 +421,14 @@ class _GameScreenState extends State<GameScreen> {
   }) {
     List<Widget> wordWidgets = [];
     int currentInputIndex = startIndex;
-    
+
     for (int i = 0; i < words.length; i++) {
       final String word = words[i];
       for (int j = 0; j < word.length; j++) {
         bool isFilled = currentInputIndex < userInput.length;
-        bool isCorrectAndAnimated = isSolved && currentInputIndex < animatedCorrectChars;
-        
+        bool isCorrectAndAnimated =
+            isSolved && currentInputIndex < animatedCorrectChars;
+
         // Calculate what the "stable" decoration should be based on whether there's ever been content
         bool hasContent = isFilled;
 
@@ -408,22 +446,22 @@ class _GameScreenState extends State<GameScreen> {
                     borderRadius: BorderRadius.circular(boxSize * 0.2),
                   )
                 : hasContent
-                    ? BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.blueGrey.shade700,
-                            Colors.blueGrey.shade600,
-                          ],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                        borderRadius: BorderRadius.circular(boxSize * 0.2),
-                      )
-                    : BoxDecoration(
-                        color: Colors.grey.shade800,
-                        border: Border.all(color: Colors.grey.shade600),
-                        borderRadius: BorderRadius.circular(boxSize * 0.2),
-                      ),
+                ? BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.blueGrey.shade700,
+                        Colors.blueGrey.shade600,
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(boxSize * 0.2),
+                  )
+                : BoxDecoration(
+                    color: Colors.grey.shade800,
+                    border: Border.all(color: Colors.grey.shade600),
+                    borderRadius: BorderRadius.circular(boxSize * 0.2),
+                  ),
             alignment: Alignment.center,
             child: ClipRect(
               child: AnimatedSwitcher(
@@ -432,14 +470,13 @@ class _GameScreenState extends State<GameScreen> {
                 switchOutCurve: Curves.easeIn,
                 transitionBuilder: (Widget child, Animation<double> animation) {
                   // Simpler transition - just opacity, no sliding
-                  return FadeTransition(
-                    opacity: animation,
-                    child: child,
-                  );
+                  return FadeTransition(opacity: animation, child: child);
                 },
                 child: isFilled
                     ? Text(
-                        key: ValueKey('letter_${userInput[currentInputIndex]}_$currentInputIndex'),
+                        key: ValueKey(
+                          'letter_${userInput[currentInputIndex]}_$currentInputIndex',
+                        ),
                         userInput[currentInputIndex],
                         style: TextStyle(
                           color: Colors.white,
@@ -452,7 +489,7 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
         );
-        
+
         currentInputIndex++;
         if (j < word.length - 1) {
           wordWidgets.add(SizedBox(width: spacing));
@@ -462,7 +499,7 @@ class _GameScreenState extends State<GameScreen> {
         wordWidgets.add(SizedBox(width: boxSize * 0.4));
       }
     }
-    
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: wordWidgets,
