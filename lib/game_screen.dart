@@ -44,7 +44,7 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  void _goToNextLevel() {
+void _goToNextLevel() {
     final levelController = context.read<LevelController>();
     final nextLevel = levelController.advanceFrom(widget.levelInfo.levelNumber);
 
@@ -52,18 +52,81 @@ class _GameScreenState extends State<GameScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Congratulations!'),
-          content: const Text('You have completed all levels.'),
-          actions: [
-            TextButton(
-              child: const Text('MAIN MENU'),
-              onPressed: () {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
+        builder: (context) {
+          // Get screen width for responsive sizing
+          final screenWidth = MediaQuery.of(context).size.width;
+
+          // Define responsive sizes
+          final double dialogWidth = screenWidth * 0.85; // Dialog takes up 85% of screen width
+          final double lottieSize = screenWidth * 0.4; // Animation is 40% of screen width (slightly smaller)
+
+          return Dialog(
+            backgroundColor: Colors.transparent, // Keep transparent for custom shape
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: dialogWidth),
+              child: Container( // Now the main dialog container holds everything
+                decoration: BoxDecoration(
+                  color: Colors.grey[850], // A dark background color
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.blueGrey.shade700, width: 2),
+                ),
+                padding: const EdgeInsets.all(20), // Padding for content inside the container
+                child: Column(
+                  mainAxisSize: MainAxisSize.min, // Fit content vertically
+                  children: [
+                    SizedBox(
+                      width: lottieSize,
+                      height: lottieSize,
+                      child: Lottie.asset(
+                        'assets/animation/end.json',
+                        repeat: true,
+                      ),
+                    ),
+                    const SizedBox(height: 20), // Spacing between animation and text
+                    Text(
+                      'Congratulations!',
+                      style: TextStyle(
+                        fontSize: dialogWidth * 0.08, // Responsive font size
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "All levels beat! A new level arrives daily via notifications. We'd love a review!",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: dialogWidth * 0.05, // Responsive font size
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        backgroundColor: Colors.green.shade600,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'OK',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: dialogWidth * 0.05, // Responsive font size
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.of(context).popUntil((route) => route.isFirst);
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        ),
+          );
+        },
       );
     }
   }
