@@ -2,12 +2,14 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:in_app_review/in_app_review.dart';
 import 'package:lottie/lottie.dart';
 import 'package:operation_sunrise/audio/audio_controller.dart';
 import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/change_notifier/ads_controller.dart';
 import 'package:operation_sunrise/change_notifier/game_controller.dart';
 import 'package:operation_sunrise/change_notifier/level_controller.dart';
+import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/input_area/concentric_letter_circle.dart';
 import 'package:operation_sunrise/data/level_info.dart';
 import 'package:operation_sunrise/menu/menu_drawer.dart';
@@ -31,6 +33,16 @@ class _GameScreenState extends State<GameScreen> {
   int _animatedCorrectChars = 0;
   Timer? _greenAnimationTimer;
   bool _isAnimatingSuccess = false;
+
+  void _onLevelAnimationComplete() async {
+    if (mounted) {
+      final settings = context.read<SettingsController>();
+      final InAppReview inAppReview = InAppReview.instance;
+      if (await settings.canAskForReview() && await inAppReview.isAvailable()) {
+        InAppReview.instance.requestReview();
+      }
+    }
+  }
 
   void _goToNextLevel() {
     final levelController = context.read<LevelController>();
@@ -90,6 +102,7 @@ class _GameScreenState extends State<GameScreen> {
       _greenAnimationTimer = Timer.periodic(animationSpeed, (timer) {
         if (_animatedCorrectChars >= _gameController.userInput.length) {
           timer.cancel();
+          _onLevelAnimationComplete();
         } else {
           if (mounted) {
             setState(() {

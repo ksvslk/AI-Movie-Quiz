@@ -79,14 +79,7 @@ class SettingsController with ChangeNotifier {
     await _persistence.saveAppInstallTime();
   }
 
-  Future<bool> canAskForReview({
-    required String? name,
-    required String? text,
-  }) async {
-    if (name == null || text == null || !text.contains(name)) {
-      return false;
-    }
-
+  Future<bool> canAskForReview() async {
     final now = DateTime.now().toUtc();
 
     // Rule 2: Check if app was installed at least 15 minutes ago.
