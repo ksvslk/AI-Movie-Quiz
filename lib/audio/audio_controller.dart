@@ -1,32 +1,28 @@
+// lib/audio/audio_controller.dart
+
 // Copyright 2022, the Flutter project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
+import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:real_volume/real_volume.dart';
 
-import 'sounds.dart';
-
-/// Allows playing music and sound. A facade to `package:audioplayers`.
+/// A controller that allows playing sound effects.
 class AudioController {
   static final _log = Logger('AudioController');
 
   SettingsController? _settings;
   ValueNotifier<AppLifecycleState>? _lifecycleNotifier;
 
-  late AudioSource letter;
-  late AudioSource select;
-  late AudioSource erase;
-  late AudioSource eraseAll;
-  late AudioSource reveal;
-  late AudioSource snapclick;
-  late AudioSource impact;
+  /// A mapping of sound effects to their preloaded audio sources.
+  final Map<SfxType, AudioSource> _sfxs = {};
+  final List<SoundHandle> _activeSounds = [];
 
-  AudioController({int polyphony = 2});
+  AudioController();
 
   void attachLifecycleNotifier(
     ValueNotifier<AppLifecycleState> lifecycleNotifier,
@@ -38,19 +34,15 @@ class AudioController {
 
   void attachSettings(SettingsController settingsController) {
     if (_settings == settingsController) {
-      // Already attached to this instance. Nothing to do.
       return;
     }
 
-    // Remove handlers from the old settings controller if present
     final oldSettings = _settings;
     if (oldSettings != null) {
       oldSettings.soundsOn.removeListener(_soundsOnHandler);
     }
 
     _settings = settingsController;
-
-    // Add handlers to the new settings controller
     settingsController.soundsOn.addListener(_soundsOnHandler);
   }
 
@@ -63,124 +55,99 @@ class AudioController {
   /// Preloads all sound effects.
   Future<void> initialize() async {
     await SoLoud.instance.init();
+
     try {
-      letter = await SoLoud.instance.loadAsset('assets/sfx/letter.wav');
-      select = await SoLoud.instance.loadAsset('assets/sfx/select.wav');
-      erase = await SoLoud.instance.loadAsset('assets/sfx/erase.wav');
-      eraseAll = await SoLoud.instance.loadAsset('assets/sfx/erase_all.wav');
-      reveal = await SoLoud.instance.loadAsset('assets/sfx/reveal.wav');
-      snapclick = await SoLoud.instance.loadAsset('assets/sfx/snapclick.wav');
-      impact = await SoLoud.instance.loadAsset('assets/sfx/impact.wav');
+      // Load all sounds into the map
+      await _loadSfx(SfxType.letter, 'assets/sfx/letter.wav');
+      await _loadSfx(SfxType.select, 'assets/sfx/select.wav');
+      await _loadSfx(SfxType.erase, 'assets/sfx/erase.wav');
+      await _loadSfx(SfxType.eraseAll, 'assets/sfx/erase_all.wav');
+      await _loadSfx(SfxType.reveal, 'assets/sfx/reveal.wav');
+      await _loadSfx(SfxType.snapclick, 'assets/sfx/snapclick.wav');
+      await _loadSfx(SfxType.impact, 'assets/sfx/impact.wav');
+
+      // Preload the 'won' sounds
+      await _loadSfx(SfxType.action, 'assets/sfx/won/action.wav');
+      await _loadSfx(SfxType.adventure, 'assets/sfx/won/adventure.wav');
+      await _loadSfx(SfxType.comedy, 'assets/sfx/won/comedy.wav');
+      await _loadSfx(SfxType.drama, 'assets/sfx/won/drama.wav');
+      await _loadSfx(SfxType.fantasy, 'assets/sfx/won/fantasy.wav');
+      await _loadSfx(SfxType.horror, 'assets/sfx/won/horror.wav');
+      await _loadSfx(SfxType.mystery, 'assets/sfx/won/mystery.wav');
+      await _loadSfx(SfxType.romance, 'assets/sfx/won/romance.wav');
+      await _loadSfx(SfxType.scifi, 'assets/sfx/won/scifi.wav');
+      await _loadSfx(SfxType.thriller, 'assets/sfx/won/thriller.wav');
+      await _loadSfx(SfxType.war, 'assets/sfx/won/war.wav');
     } on Exception catch (e) {
       _log.severe("Error loading sound files", e);
     }
   }
 
+  /// Helper to load a single sound effect and add it to the map.
+  Future<void> _loadSfx(SfxType type, String assetPath) async {
+    final source = await SoLoud.instance.loadAsset(assetPath);
+    _sfxs[type] = source;
+  }
+
+  /// Plays a sound effect of the given [type].
   void playSfx(SfxType type) async {
-    RingerMode? ringerMode = await RealVolume.getRingerMode();
-    if (ringerMode == RingerMode.SILENT || ringerMode == RingerMode.VIBRATE) return;
-    // Check app setting first
+    // Check device ringer mode first.
+    final ringerMode = await RealVolume.getRingerMode();
+    if (ringerMode == RingerMode.SILENT || ringerMode == RingerMode.VIBRATE) {
+      return;
+    }
+
+    // Check app setting.
     final soundsOn = _settings?.soundsOn.value ?? false;
     if (!soundsOn) {
       return;
     }
-    // Check if app is in foreground (don't play sounds when backgrounded)
-    if (_lifecycleNotifier?.value != AppLifecycleState.resumed) {
+
+    // Check if app is in foreground.
+    /*
+    if (_lifecycleNotifier?.value == AppLifecycleState.paused) {
       return;
     }
+    */
 
-    switch (type) {
-      case SfxType.letter:
-        SoLoud.instance.play(letter);
-        break;
-      case SfxType.select:
-        SoLoud.instance.play(select);
-        break;
-      case SfxType.erase:
-        SoLoud.instance.play(erase);
-        break;
-      case SfxType.eraseAll:
-        SoLoud.instance.play(eraseAll);
-        break;
-      case SfxType.reveal:
-        SoLoud.instance.play(reveal);
-        break;
-      case SfxType.action:
-        final action = await SoLoud.instance.loadAsset('assets/sfx/won/action.wav');
-        SoLoud.instance.play(action);
-        break;
-      case SfxType.adventure:
-        final adventure = await SoLoud.instance.loadAsset('assets/sfx/won/adventure.wav');
-        SoLoud.instance.play(adventure);
-        break;
-      case SfxType.comedy:
-        final comedy = await SoLoud.instance.loadAsset('assets/sfx/won/comedy.wav');
-        SoLoud.instance.play(comedy);
-        break;
-      case SfxType.drama:
-        final drama = await SoLoud.instance.loadAsset('assets/sfx/won/drama.wav');
-        SoLoud.instance.play(drama);
-        break;
-      case SfxType.fantasy:
-        final fantasy = await SoLoud.instance.loadAsset('assets/sfx/won/fantasy.wav');
-        SoLoud.instance.play(fantasy);
-        break;
-      case SfxType.horror:
-        final horror = await SoLoud.instance.loadAsset('assets/sfx/won/horror.wav');
-        SoLoud.instance.play(horror);
-        break;
-      case SfxType.mystery:
-        final mystery = await SoLoud.instance.loadAsset('assets/sfx/won/mystery.wav');
-        SoLoud.instance.play(mystery);
-        break;
-      case SfxType.romance:
-        final romance = await SoLoud.instance.loadAsset('assets/sfx/won/romance.wav');
-        SoLoud.instance.play(romance);
-        break;
-      case SfxType.scifi:
-        final scifi = await SoLoud.instance.loadAsset('assets/sfx/won/scifi.wav');
-        SoLoud.instance.play(scifi);
-        break;
-      case SfxType.thriller:
-        final thriller = await SoLoud.instance.loadAsset('assets/sfx/won/thriller.wav');
-        SoLoud.instance.play(thriller);
-        break;
-      case SfxType.war:
-        final war = await SoLoud.instance.loadAsset('assets/sfx/won/war.wav');
-        SoLoud.instance.play(war);
-        break;
-      case SfxType.snapclick:
-        SoLoud.instance.play(snapclick);
-        break;
-      case SfxType.impact:
-        SoLoud.instance.play(impact);
-        break;
+    // Find the preloaded sound and play it.
+    final sound = _sfxs[type];
+    if (sound != null) {
+      // Capture the handle when you play the sound
+      final handle = await SoLoud.instance.play(sound);
+      _activeSounds.add(handle);
+    } else {
+      _log.warning('Tried to play sound $type, but it was not preloaded.');
     }
   }
 
   void _handleAppLifecycle() {
     switch (_lifecycleNotifier!.value) {
       case AppLifecycleState.paused:
-        _stopAllSound();
       case AppLifecycleState.detached:
-        _stopAllSound();
       case AppLifecycleState.hidden:
         _stopAllSound();
+        break;
       case AppLifecycleState.resumed:
       case AppLifecycleState.inactive:
-        _stopAllSound();
+        // No need to do anything when resuming or going inactive.
         break;
     }
   }
 
   void _soundsOnHandler() {
-    // Handle when sound settings change
     final soundsOn = _settings?.soundsOn.value ?? false;
     if (!soundsOn) {
       _stopAllSound();
     }
   }
 
-  void _stopAllSound() async {
+  void _stopAllSound() {
+    // Stop each sound individually
+    for (final handle in _activeSounds) {
+      SoLoud.instance.stop(handle);
+    }
+    // Clear the list of active sounds
+    _activeSounds.clear();
   }
 }

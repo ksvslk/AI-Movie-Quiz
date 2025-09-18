@@ -52,13 +52,22 @@ Future<void> signInAnonymouslyWithRetry() async {
       dev.log('Successfully signed in anonymously.');
       return; // Success
     } on FirebaseAuthException catch (e) {
-      dev.log('Failed to sign in (Attempt ${attempt + 1}/$maxRetries): ${e.code}', level: Level.WARNING.value, error: e);
+      dev.log(
+        'Failed to sign in (Attempt ${attempt + 1}/$maxRetries): ${e.code}',
+        level: Level.WARNING.value,
+        error: e,
+      );
       if (attempt == maxRetries - 1) {
-        dev.log('Max sign-in retries reached. Failing permanently.', level: Level.SEVERE.value);
+        dev.log(
+          'Max sign-in retries reached. Failing permanently.',
+          level: Level.SEVERE.value,
+        );
         rethrow; // Re-throw the last exception
       }
       final backoffTime = initialDelay * pow(2, attempt);
-      final jitter = Duration(milliseconds: random.nextInt(maxJitter.inMilliseconds));
+      final jitter = Duration(
+        milliseconds: random.nextInt(maxJitter.inMilliseconds),
+      );
       final totalDelay = backoffTime + jitter;
       dev.log('Waiting for ${totalDelay.inMilliseconds}ms before next retry.');
       await Future.delayed(totalDelay);
@@ -69,10 +78,12 @@ Future<void> signInAnonymouslyWithRetry() async {
 
 Future<void> setUpRemoteConfig() async {
   final remoteConfig = FirebaseRemoteConfig.instance;
-  await remoteConfig.setConfigSettings(RemoteConfigSettings(
-    fetchTimeout: const Duration(minutes: 1),
-    minimumFetchInterval: const Duration(minutes: 1),
-  ));
+  await remoteConfig.setConfigSettings(
+    RemoteConfigSettings(
+      fetchTimeout: const Duration(minutes: 1),
+      minimumFetchInterval: const Duration(minutes: 1),
+    ),
+  );
   await remoteConfig.setDefaults(const {
     C.minutesBeforeFirstAd: 5,
     C.dayBeforeReviewTag: 1,
@@ -97,8 +108,7 @@ Future<void> initPlatformState() async {
 }
 
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-}
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
 // --- Main App Entry Point ---
 
@@ -108,29 +118,42 @@ Future<void> main() async {
 
   Logger.root.onRecord.listen((record) {
     if (record.level >= Level.INFO) {
-      dev.log(record.message, time: record.time, level: record.level.value, name: record.loggerName, error: record.error, stackTrace: record.stackTrace);
+      dev.log(
+        record.message,
+        time: record.time,
+        level: record.level.value,
+        name: record.loggerName,
+        error: record.error,
+        stackTrace: record.stackTrace,
+      );
     }
   });
 
   // Initialize core services
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.debug,
-    appleProvider: AppleProvider.debug,
+    androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+    appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttestWithDeviceCheckFallback,
   );
 
-    // --- NEW: Perform anonymous sign-in right after App Check ---
+  // --- NEW: Perform anonymous sign-in right after App Check ---
   try {
     await signInAnonymouslyWithRetry();
   } catch (e) {
-    dev.log('Anonymous sign-in failed after all retries. The app will show an error screen.', error: e, level: Level.SEVERE.value);
+    dev.log(
+      'Anonymous sign-in failed after all retries. The app will show an error screen.',
+      error: e,
+      level: Level.SEVERE.value,
+    );
     // We will let the app continue to run. The AuthGate will see
     // that `currentUser` is null and show the error screen.
   }
   // --- END NEW SECTION ---
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+  );
 
   // NOTE: The sign-in logic has been moved to AuthGate.
 
@@ -154,18 +177,30 @@ Future<void> main() async {
     }
   }
 
-  final settingsController = SettingsController(persistence: LocalStorageSettingsPersistence());
+  final settingsController = SettingsController(
+    persistence: LocalStorageSettingsPersistence(),
+  );
   await settingsController.loadStateFromPersistence();
-  final levelController = LevelController(settingsController: settingsController);
+  final levelController = LevelController(
+    settingsController: settingsController,
+  );
   await levelController.setupFCMListeners();
 
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
   runApp(
     AppLifecycleObserver(
       child: MultiProvider(
         providers: [
           ChangeNotifierProvider.value(value: settingsController),
           ChangeNotifierProvider.value(value: levelController),
-          ProxyProvider2<SettingsController, ValueNotifier<AppLifecycleState>, AudioController>(
+          ProxyProvider2<
+            SettingsController,
+            ValueNotifier<AppLifecycleState>,
+            AudioController
+          >(
             lazy: false,
             create: (context) => AudioController()..initialize(),
             update: (context, settings, lifecycleNotifier, audio) {
@@ -176,7 +211,10 @@ Future<void> main() async {
             },
             dispose: (context, audio) => audio.dispose(),
           ),
-          ChangeNotifierProxyProvider<ValueNotifier<AppLifecycleState>, AdsController?>(
+          ChangeNotifierProxyProvider<
+            ValueNotifier<AppLifecycleState>,
+            AdsController?
+          >(
             lazy: false,
             create: (context) => adsController,
             update: (context, lifecycleNotifier, ads) {

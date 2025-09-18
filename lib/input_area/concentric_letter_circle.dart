@@ -85,7 +85,7 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
   void _generateCharacterData() {
     // Define the valid characters to extract from the solution string.
     // The hyphen '-' is at the end to be treated as a literal character.
-    final validCharsRegex = RegExp(r'[A-Z:,.!?-]');
+    final validCharsRegex = RegExp(r'[A-Z0-9:,.!?-]');
 
     // Extract the unique, valid characters from the solution.
     // This set is now the ONLY source for the keyboard buttons.
@@ -104,8 +104,10 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
         frequencyMap.update(charStr, (value) => value + 1, ifAbsent: () => 1);
       }
     }
-    final maxFrequency =
-        frequencyMap.values.fold(0, (prev, element) => max(prev, element));
+    final maxFrequency = frequencyMap.values.fold(
+      0,
+      (prev, element) => max(prev, element),
+    );
 
     // Create the character set directly from the unique solution characters.
     List<String> characterSet = uniqueSolutionChars.toList();
@@ -122,17 +124,20 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
     _maxFrequency = maxFrequency;
   }
 
-
   /// Performs a one-time, intensive calculation to find the final static positions.
-  void _calculateAndStoreLayout(double containerRadius, double averageButtonSize) {
+  void _calculateAndStoreLayout(
+    double containerRadius,
+    double averageButtonSize,
+  ) {
     final List<_LayoutParticle> particles = _characterSet.map((letter) {
       double sizeMultiplier = 1.0;
       if (letter == _backspaceChar) {
         sizeMultiplier = 1.15;
       } else {
         final int frequency = _frequencyMap[letter] ?? 0;
-        final double freqRatio =
-            (_maxFrequency > 0) ? frequency / _maxFrequency : 0;
+        final double freqRatio = (_maxFrequency > 0)
+            ? frequency / _maxFrequency
+            : 0;
         const double baseMultiplier = 0.85;
         const double multiplierRange = 0.30;
         sizeMultiplier = baseMultiplier + (freqRatio * multiplierRange);
@@ -154,7 +159,9 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
 
   /// Runs a headless simulation to find stable, padded positions.
   void _runPackingSimulation(
-      List<_LayoutParticle> particles, double containerRadius) {
+    List<_LayoutParticle> particles,
+    double containerRadius,
+  ) {
     if (particles.isEmpty || containerRadius <= 0) return;
 
     const double padding = 6.0; // INCREASED PADDING
@@ -176,7 +183,10 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
           if (distance < minDistance) {
             final overlap = minDistance - distance;
             if (distance == 0.0) {
-              p1.position -= Offset.fromDirection(random.nextDouble() * 2 * pi, 0.1);
+              p1.position -= Offset.fromDirection(
+                random.nextDouble() * 2 * pi,
+                0.1,
+              );
             } else {
               final direction = delta / distance;
               p1.position -= direction * overlap * 0.5;
@@ -222,7 +232,9 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
         }
         if (p1.position.distance > containerRadius - p1.radius) {
           p1.position =
-              p1.position / p1.position.distance * (containerRadius - p1.radius);
+              p1.position /
+              p1.position.distance *
+              (containerRadius - p1.radius);
         }
       }
     }
@@ -233,7 +245,7 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
     for (var char in text.toUpperCase().runes) {
       final charStr = String.fromCharCode(char);
       // Use the updated RegExp here as well.
-      if (charStr.contains(RegExp(r'[A-Z:,.!?-]'))) {
+      if (charStr.contains(RegExp(r'[A-Z0-9:,.!?-]'))) {
         counts.update(charStr, (value) => value + 1, ifAbsent: () => 1);
       }
     }
@@ -256,12 +268,15 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
           return const SizedBox.shrink();
         }
 
-        const double arcStrokeWidth = 35.0;
+        const double arcStrokeWidth = 36.0;
         final double totalAvailableRadius = effectiveDiameter / 2;
         final double arcRingInnerRadius = totalAvailableRadius - arcStrokeWidth;
-        final double maxRadiusForLetters = arcRingInnerRadius - 4.0;
-        
-        final double averageButtonSize = max(30.0, min(effectiveDiameter / 10, 45.0));
+        final double maxRadiusForLetters = arcRingInnerRadius - 12.0;
+
+        final double averageButtonSize = max(
+          30.0,
+          min(effectiveDiameter / 10, 45.0),
+        );
 
         final arcController = ArcButtonController(
           radius: totalAvailableRadius,
@@ -271,7 +286,7 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
           onSpaceTapped: widget.onSpaceTapped,
           onHintTapped: widget.onHintTapped,
         );
-        
+
         // If layout is not calculated yet, do it once after the first frame.
         if (!_isLayoutCalculated) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -279,24 +294,28 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
               _calculateAndStoreLayout(maxRadiusForLetters, averageButtonSize);
             }
           });
-          
+
           // Render the outer controls while the layout calculates.
           return Center(
             child: SizedBox(
               width: effectiveDiameter,
               height: effectiveDiameter,
-              child: Stack(alignment: Alignment.center, children: [arcController]),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [arcController],
+              ),
             ),
           );
         }
-        
+
         // If layout is ready, build the widgets from the stable particle list.
         final List<Widget> allLetterWidgets = [arcController];
 
         for (int i = 0; i < _particles.length; i++) {
           final particle = _particles[i];
           final isRequired = requiredCounts.containsKey(particle.letter);
-          final isVisible = !isRequired ||
+          final isVisible =
+              !isRequired ||
               (usedCounts[particle.letter] ?? 0) <
                   (requiredCounts[particle.letter] ?? 0);
 
@@ -403,17 +422,20 @@ class _LetterCircleButtonState extends State<_LetterCircleButton>
 
   @override
   Widget build(BuildContext context) {
-    final bool isBackspace = widget.letter == _LetterCircleButton._backspaceChar;
+    final bool isBackspace =
+        widget.letter == _LetterCircleButton._backspaceChar;
     final audioController = context.read<AudioController>();
 
     // --- The visual code is the same, just using `widget.` to access properties ---
-    final Color seatBackColor =
-        isBackspace ? Colors.pink.shade800 : Colors.redAccent.shade400;
+    final Color seatBackColor = isBackspace
+        ? Colors.pink.shade800
+        : Colors.redAccent.shade400;
     final Color seatBaseColor = isBackspace
         ? Colors.pink.shade900.withOpacity(0.8)
         : Colors.redAccent;
-    final Color armrestColor =
-        isBackspace ? Colors.pink.shade900 : Colors.redAccent.shade700;
+    final Color armrestColor = isBackspace
+        ? Colors.pink.shade900
+        : Colors.redAccent.shade700;
 
     final seatBackDecoration = BoxDecoration(
       color: seatBackColor,
@@ -461,10 +483,7 @@ class _LetterCircleButtonState extends State<_LetterCircleButton>
 
       letterContent = Transform.scale(
         scale: scale,
-        child: Text(
-          widget.letter,
-          style: textStyle,
-        ),
+        child: Text(widget.letter, style: textStyle),
       );
     }
 
@@ -566,7 +585,7 @@ class _LetterCircleButtonState extends State<_LetterCircleButton>
   }
 }
 
-// ~~~ WIDGET 3: The Arc Button Controller (UNCHANGED) ~~~
+// ~~~ WIDGET 3: The Arc Button Controller ~~~
 
 enum _TappedArc { none, symbols, shift, space, hint }
 
@@ -653,8 +672,9 @@ class _ArcButtonControllerState extends State<ArcButtonController>
   void _checkForHintReveals(GameController game) {
     if (!mounted) return;
 
-    final currentRevealedState =
-        game.availableHints.map((h) => h.isRevealed).toList();
+    final currentRevealedState = game.availableHints
+        .map((h) => h.isRevealed)
+        .toList();
 
     if (_isFirstBuild) {
       _lastRevealedState = currentRevealedState;
@@ -679,6 +699,26 @@ class _ArcButtonControllerState extends State<ArcButtonController>
     }
     _lastRevealedState = currentRevealedState;
   }
+
+  // *** NEW METHOD START ***
+  /// Automatically reveals all hints if the user is subscribed.
+  /// This is a state-driven action, checked on every build.
+  void _revealAllHintsIfSubscribed(GameController game, MoneyController money) {
+    if (!mounted) return;
+
+    // If the user is subscribed, iterate through all hints.
+    if (money.isSubscribed()) {
+      for (int i = 0; i < game.availableHints.length; i++) {
+        // If a hint is not yet revealed, reveal it.
+        if (!game.availableHints[i].isRevealed) {
+          // This call will notify listeners of the GameController, causing a
+          // rebuild and ensuring this logic doesn't run again for this hint.
+          game.revealHintByIndex(i);
+        }
+      }
+    }
+  }
+  // *** NEW METHOD END ***
 
   void _handleTapDown(
     TapDownDetails details,
@@ -723,15 +763,15 @@ class _ArcButtonControllerState extends State<ArcButtonController>
 
     if (hintIndex != -1 && hintIndex < game.availableHints.length) {
       final hint = game.availableHints[hintIndex];
+      // Note: With the new automatic reveal logic, if money.isSubscribed() is true,
+      // hint.isRevealed will also be true after the next build.
+      // So this logic correctly handles showing popups for already revealed hints.
       if (hint.isRevealed || money.isSubscribed()) {
         if (hint.value.length > longHintThreshold) {
           HapticFeedback.mediumImpact();
           showDialog(
             context: context,
-            builder: (ctx) => QuotePopup(
-              quote: hint.value,
-              title: hint.label,
-            ),
+            builder: (ctx) => QuotePopup(quote: hint.value, title: hint.label),
           );
           setState(() {
             _tappedArc = tappedArc;
@@ -741,6 +781,7 @@ class _ArcButtonControllerState extends State<ArcButtonController>
         }
         return;
       }
+ 
     }
 
     if (_animationController.isAnimating) return;
@@ -757,8 +798,10 @@ class _ArcButtonControllerState extends State<ArcButtonController>
         action = widget.onSpaceTapped;
         break;
       case _TappedArc.hint:
+        // If subscribed, the hints are revealed automatically.
+        // The button becomes a status indicator, so tapping does nothing.
         action = money.isSubscribed()
-            ? widget.onHintTapped
+            ? () {}
             : money.purchaseSubscription;
         break;
       default:
@@ -782,6 +825,10 @@ class _ArcButtonControllerState extends State<ArcButtonController>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForHintReveals(game);
+      // *** MODIFIED LOGIC START ***
+      // On every build, check if the user is subscribed and reveal hints accordingly.
+      _revealAllHintsIfSubscribed(game, money);
+      // *** MODIFIED LOGIC END ***
     });
 
     return GestureDetector(
@@ -887,8 +934,9 @@ class _ArcPainter extends CustomPainter {
             'text': isLongHint ? 'SHOW QUOTE' : hint.value,
             'subtitle': null,
             'baseColor': isLongHint ? tappableQuoteColor : disabledColor,
-            'highlightColor':
-                isLongHint ? tappableQuoteHighlight : highlightRed,
+            'highlightColor': isLongHint
+                ? tappableQuoteHighlight
+                : highlightRed,
           });
         } else {
           arcSections.add({
@@ -906,13 +954,13 @@ class _ArcPainter extends CustomPainter {
     final productInfo = moneyController.getProductFriendlyInfo();
     final productDescription = moneyController.getDescriptionOfProduct();
     arcSections.add({
-      'text': isSubscribed ? 'GET HINT' : (productInfo ?? 'GET PREMIUM'),
+      'text': isSubscribed ? 'You own premium!' : (productInfo ?? 'GET PREMIUM'),
       'subtitle': isSubscribed ? null : productDescription,
       'startAngle': (55 * pi / 36.0),
       'flipText': false,
       'arcType': _TappedArc.hint,
-      'baseColor': baseGreen,
-      'highlightColor': highlightGreen,
+      'baseColor': isSubscribed ? const Color.fromARGB(255, 86, 0, 136) : baseGreen,
+      'highlightColor': isSubscribed ? const Color.fromARGB(255, 51, 0, 154) : highlightGreen,
     });
 
     final double capAdjust = asin((strokeWidth / 2) / baseRadius);
@@ -952,11 +1000,14 @@ class _ArcPainter extends CustomPainter {
         final double maxGlowSize = strokeWidth * 0.4;
 
         final glowPaint = Paint()
-          ..color = const Color.fromARGB(117, 255, 251, 0)
-              .withOpacity(1.0 - glowProgress)
+          ..color = const Color.fromARGB(
+            117,
+            255,
+            251,
+            0,
+          ).withOpacity(1.0 - glowProgress)
           ..style = PaintingStyle.stroke
-          ..strokeWidth =
-              strokeWidth + (maxGlowSize * glowProgress)
+          ..strokeWidth = strokeWidth + (maxGlowSize * glowProgress)
           ..strokeCap = StrokeCap.round
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0);
 
@@ -1017,7 +1068,7 @@ class _ArcPainter extends CustomPainter {
     if (radius <= 0 || text.isEmpty) return;
 
     // --- 1. Measurement Pass ---
-    // First, measure the text with the initial font size to see if it fits.
+    // Measure the total angular width of the text at its original font size.
     double initialTotalAngle = 0;
     for (int i = 0; i < text.length; i++) {
       final painter = TextPainter(
@@ -1025,26 +1076,37 @@ class _ArcPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       )..layout();
       final asinValue = painter.width / (2 * radius);
-      if (asinValue.abs() > 1) { return; } // Avoid math errors
+      if (asinValue.abs() > 1) return; // Avoid math errors
       initialTotalAngle += 2 * asin(asinValue);
     }
 
     // --- 2. Determine Final Font Size ---
-    // If the text is too long, calculate a new smaller font size.
+    // This is the corrected logic.
     TextStyle effectiveStyle = style;
-    if (initialTotalAngle > sweepAngle && style.fontSize != null) {
-      // Add a little padding by targeting 95% of the sweep angle
-      final double scaleFactor = (sweepAngle * 0.95) / initialTotalAngle;
+    // This factor controls the padding. Lower value = more padding.
+    const double arcTextPaddingFactor = 0.85; 
+
+    // Calculate the target angle, which is the available space minus padding.
+    final double targetAngle = sweepAngle * arcTextPaddingFactor;
+
+    // If the text's angle is larger than our target, we MUST scale it down.
+    // Otherwise, we use the original size (scale factor of 1.0).
+    // This prevents short text like "OK" from being stretched to fill the arc.
+    if (initialTotalAngle > targetAngle && style.fontSize != null) {
+      final double scaleFactor = targetAngle / initialTotalAngle;
       effectiveStyle = style.copyWith(fontSize: style.fontSize! * scaleFactor);
     }
-    
+    // *** END OF CORRECTED LOGIC ***
+
     // --- 3. Drawing Pass ---
     // Now, build the final painters and draw the text using the effective style.
-    final String effectiveText =
-        isUpsideDown ? text.split('').reversed.join('') : text;
+    final String effectiveText = isUpsideDown
+        ? text.split('').reversed.join('')
+        : text;
     double finalTotalAngle = 0;
     final List<TextPainter> charPainters = [];
 
+    // We must re-measure with the new font size to correctly center the text.
     for (int i = 0; i < effectiveText.length; i++) {
       final painter = TextPainter(
         text: TextSpan(text: effectiveText[i], style: effectiveStyle),
@@ -1053,7 +1115,7 @@ class _ArcPainter extends CustomPainter {
       charPainters.add(painter);
 
       final asinValue = painter.width / (2 * radius);
-      if (asinValue.abs() > 1) { return; } // Avoid math errors
+      if (asinValue.abs() > 1) return; // Avoid math errors
       finalTotalAngle += 2 * asin(asinValue);
     }
 

@@ -25,7 +25,8 @@ class LevelVideoPlayer extends StatefulWidget {
 
 class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     with TickerProviderStateMixin {
-  late VideoPlayerController _videoPlayerController;
+  // CHANGED: Made the controller nullable to handle the race condition.
+  VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
 
   late SettingsController _settings;
@@ -82,9 +83,10 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
 
     _loadingOpacityController.addStatusListener((status) {
       if (status == AnimationStatus.dismissed) {
+        // CHANGED: Added null check
         if (_settings.autoplayOn.value &&
-            _videoPlayerController.value.isInitialized) {
-          _videoPlayerController.play();
+            _videoPlayerController?.value.isInitialized == true) {
+          _videoPlayerController!.play();
         }
       }
     });
@@ -98,7 +100,8 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     }
     if (widget.videoPath != oldWidget.videoPath) {
       _initGeneration++;
-      _videoPlayerController.dispose();
+      // CHANGED: Use null-aware operator for safe disposal.
+      _videoPlayerController?.dispose();
       _chewieController?.dispose();
       _chewieController = null;
       setState(() {
@@ -122,11 +125,20 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
 
       final file = await DefaultCacheManager().getSingleFile(url);
 
+      // Previous controller should be disposed before creating a new one
+      await _videoPlayerController?.dispose();
+
+      if (currentGeneration != _initGeneration || !mounted) return;
+
       _videoPlayerController = VideoPlayerController.file(file);
-      await _videoPlayerController.initialize();
+      // CHANGED: Use a local variable to avoid accessing the nullable class member repeatedly
+      final controller = _videoPlayerController;
+      if (controller == null) return;
+
+      await controller.initialize();
 
       if (currentGeneration != _initGeneration || !mounted) {
-        _videoPlayerController.dispose();
+        controller.dispose();
         return;
       }
 
@@ -155,7 +167,8 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
 
   ChewieController _createChewieController() {
     return ChewieController(
-      videoPlayerController: _videoPlayerController,
+      // CHANGED: Use bang operator (!) as we are certain it's initialized here.
+      videoPlayerController: _videoPlayerController!,
       autoPlay: false, // Manually controlled via animation listener
       looping: _settings.loopingOn.value,
       allowFullScreen: false,
@@ -177,16 +190,18 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
   }
 
   void _onSoundsOnSettingChanged() {
-    if (!_videoPlayerController.value.isInitialized) {
+    // CHANGED: Check for null and then for initialization status.
+    if (_videoPlayerController?.value.isInitialized != true) {
       return;
     }
     final newVolume = _settings.soundsOn.value ? 1.0 : 0.0;
-    _videoPlayerController.setVolume(newVolume);
+    _videoPlayerController!.setVolume(newVolume);
   }
 
   void _onSettingChanged() {
+    // CHANGED: Check for null and then for initialization status.
     if (_chewieController == null ||
-        !_videoPlayerController.value.isInitialized) {
+        _videoPlayerController?.value.isInitialized != true) {
       return;
     }
     final newAutoplayValue = _settings.autoplayOn.value;
@@ -202,9 +217,9 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     oldChewieController?.dispose();
     if (oldChewieController?.autoPlay != newAutoplayValue) {
       if (newAutoplayValue) {
-        _videoPlayerController.play();
+        _videoPlayerController!.play();
       } else {
-        _videoPlayerController.pause();
+        _videoPlayerController!.pause();
       }
     }
   }
@@ -230,7 +245,8 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     _settings.soundsOn.removeListener(_onSoundsOnSettingChanged);
 
     _initGeneration++;
-    _videoPlayerController.dispose();
+    // CHANGED: Use null-aware operator for safe disposal. This is the main fix.
+    _videoPlayerController?.dispose();
     _chewieController?.dispose();
     _chewieController = null;
     _loadingOpacityController.dispose();
@@ -238,7 +254,7 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     super.dispose();
   }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     if (_hasError) {
       return const Center(

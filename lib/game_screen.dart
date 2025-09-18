@@ -213,7 +213,7 @@ class _GameScreenState extends State<GameScreen> {
                     flex: 5,
                     child: Container(
                       color: Colors.black,
-                      padding: const EdgeInsets.all(24.0),
+                      padding: const EdgeInsets.all(16.0),
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final size = min(
@@ -297,7 +297,7 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget _buildSolutionField(BuildContext context, GameController controller) {
     final screenWidth = MediaQuery.of(context).size.width;
-    const double horizontalPadding = 16.0;
+    const double horizontalPadding = 8.0;
     final double availableWidth = screenWidth - (horizontalPadding * 2);
     const double spacing = 5.0;
     const double runSpacing = 8.0;
@@ -354,7 +354,7 @@ class _GameScreenState extends State<GameScreen> {
     }
     return Padding(
       padding: const EdgeInsets.symmetric(
-        vertical: 8.0,
+        vertical: 4.0,
         horizontal: horizontalPadding,
       ),
       child: Column(
@@ -374,7 +374,7 @@ class _GameScreenState extends State<GameScreen> {
     required double spacing,
     int maxLines = 3,
   }) {
-    const double maxBoxSize = 35.0;
+    const double maxBoxSize = 32.0;
     const double minBoxSize = 10.0;
     const double step = 0.5;
     for (

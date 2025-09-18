@@ -12,6 +12,7 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    
     return StreamBuilder<User?>(
       // Listen to the authentication state stream
       stream: FirebaseAuth.instance.authStateChanges(),
