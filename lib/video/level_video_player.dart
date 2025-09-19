@@ -1,10 +1,13 @@
+// lib/widgets/level_video_player.dart (or your file path)
+
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:lottie/lottie.dart';
-import 'package:operation_sunrise/data/settings_controller.dart'; // Assuming this path is correct for your project
+import 'package:operation_sunrise/audio/audio_controller.dart';
+import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
@@ -25,11 +28,11 @@ class LevelVideoPlayer extends StatefulWidget {
 
 class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     with TickerProviderStateMixin {
-  // CHANGED: Made the controller nullable to handle the race condition.
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
 
   late SettingsController _settings;
+  late AudioController _audio;
 
   int _initGeneration = 0;
   bool _isVideoInitialized = false;
@@ -56,10 +59,19 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _settings = context.read<SettingsController>();
+    _audio = context.read<AudioController>();
 
+    // Remove old listeners before adding new ones to be safe.
+    _settings.autoplayOn.removeListener(_onSettingChanged);
+    _settings.loopingOn.removeListener(_onSettingChanged);
+    _settings.soundsOn.removeListener(_setPlayerVolume);
+    _audio.isMutedNotifier.removeListener(_setPlayerVolume);
+
+    // Add listeners for settings and the crucial real-time mute notifier.
     _settings.autoplayOn.addListener(_onSettingChanged);
     _settings.loopingOn.addListener(_onSettingChanged);
-    _settings.soundsOn.addListener(_onSoundsOnSettingChanged);
+    _settings.soundsOn.addListener(_setPlayerVolume);
+    _audio.isMutedNotifier.addListener(_setPlayerVolume);
   }
 
   void _initializeAnimationControllers() {
@@ -83,7 +95,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
 
     _loadingOpacityController.addStatusListener((status) {
       if (status == AnimationStatus.dismissed) {
-        // CHANGED: Added null check
         if (_settings.autoplayOn.value &&
             _videoPlayerController?.value.isInitialized == true) {
           _videoPlayerController!.play();
@@ -96,11 +107,10 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
   void didUpdateWidget(covariant LevelVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isSolved) {
-      _chewieController?.setVolume(0.0);
+      _videoPlayerController?.setVolume(0.0);
     }
     if (widget.videoPath != oldWidget.videoPath) {
       _initGeneration++;
-      // CHANGED: Use null-aware operator for safe disposal.
       _videoPlayerController?.dispose();
       _chewieController?.dispose();
       _chewieController = null;
@@ -124,25 +134,20 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
       if (currentGeneration != _initGeneration || !mounted) return;
 
       final file = await DefaultCacheManager().getSingleFile(url);
-
-      // Previous controller should be disposed before creating a new one
       await _videoPlayerController?.dispose();
-
       if (currentGeneration != _initGeneration || !mounted) return;
 
       _videoPlayerController = VideoPlayerController.file(file);
-      // CHANGED: Use a local variable to avoid accessing the nullable class member repeatedly
       final controller = _videoPlayerController;
       if (controller == null) return;
 
       await controller.initialize();
-
       if (currentGeneration != _initGeneration || !mounted) {
         controller.dispose();
         return;
       }
 
-      _onSoundsOnSettingChanged();
+      _setPlayerVolume(); // Set initial volume based on current settings
       _chewieController = _createChewieController();
 
       if (currentGeneration == _initGeneration && mounted) {
@@ -155,7 +160,7 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
         });
       }
     } catch (e) {
-      print('Error initializing video player: $e');
+      log('Error initializing video player: $e');
       if (currentGeneration == _initGeneration && mounted) {
         setState(() {
           _hasError = true;
@@ -167,7 +172,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
 
   ChewieController _createChewieController() {
     return ChewieController(
-      // CHANGED: Use bang operator (!) as we are certain it's initialized here.
       videoPlayerController: _videoPlayerController!,
       autoPlay: false, // Manually controlled via animation listener
       looping: _settings.loopingOn.value,
@@ -175,7 +179,7 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
       allowPlaybackSpeedChanging: false,
       showOptions: false,
       showControls: true,
-      allowMuting: false,
+      allowMuting: false, // Manually controlling this
       draggableProgressBar: false,
       showControlsOnInitialize: false,
       errorBuilder: (context, errorMessage) {
@@ -189,17 +193,22 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
     );
   }
 
-  void _onSoundsOnSettingChanged() {
-    // CHANGED: Check for null and then for initialization status.
+  /// Sets player volume based on BOTH in-app settings and system mute status.
+  void _setPlayerVolume() {
     if (_videoPlayerController?.value.isInitialized != true) {
       return;
     }
-    final newVolume = _settings.soundsOn.value ? 1.0 : 0.0;
+
+    // Mute if the in-app sound setting is off OR if the system is muted.
+    final bool shouldMute =
+        !_settings.soundsOn.value || _audio.isMutedNotifier.value;
+    final double newVolume = shouldMute ? 0.0 : 1.0;
+
     _videoPlayerController!.setVolume(newVolume);
   }
 
+  /// Handles changes to autoplay or looping settings.
   void _onSettingChanged() {
-    // CHANGED: Check for null and then for initialization status.
     if (_chewieController == null ||
         _videoPlayerController?.value.isInitialized != true) {
       return;
@@ -240,21 +249,21 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
 
   @override
   void dispose() {
+    // Clean up all listeners to prevent memory leaks
     _settings.autoplayOn.removeListener(_onSettingChanged);
     _settings.loopingOn.removeListener(_onSettingChanged);
-    _settings.soundsOn.removeListener(_onSoundsOnSettingChanged);
+    _settings.soundsOn.removeListener(_setPlayerVolume);
+    _audio.isMutedNotifier.removeListener(_setPlayerVolume);
 
     _initGeneration++;
-    // CHANGED: Use null-aware operator for safe disposal. This is the main fix.
     _videoPlayerController?.dispose();
     _chewieController?.dispose();
-    _chewieController = null;
     _loadingOpacityController.dispose();
     _videoOpacityController.dispose();
     super.dispose();
   }
 
-    @override
+  @override
   Widget build(BuildContext context) {
     if (_hasError) {
       return const Center(
@@ -271,7 +280,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
             opacity: _videoOpacityAnimation,
             child: Chewie(controller: _chewieController!),
           ),
-
         if (!isVideoReady || _loadingOpacityController.value > 0)
           IgnorePointer(
             ignoring: isVideoReady,
@@ -282,20 +290,15 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
                 child: Container(
                   color: Colors.white,
                   child: Center(
-                    // --- CHANGED THIS SECTION ---
-                    // Use a Stack to layer the image and the panda animation.
                     child: Stack(
                       alignment: Alignment.center,
                       children: <Widget>[
-                        // Layer 1: Your Image (will be in the back)
                         Image.asset(
-                          'assets/images/cinema_screen.jpg', // <-- Your image path
+                          'assets/images/cinema_screen.jpg',
                           width: 640,
                           height: 360,
-                          fit: BoxFit.cover, // Adjust the fit to your liking
+                          fit: BoxFit.cover,
                         ),
-
-                        // Layer 2: Panda Animation (will be on top of the image)
                         Lottie.asset(
                           'assets/animation/panda_red.json',
                           width: 300,
@@ -303,7 +306,6 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
                         ),
                       ],
                     ),
-                    // ---------------------------
                   ),
                 ),
               ),

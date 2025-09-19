@@ -1,6 +1,7 @@
 // menu/menu_drawer.dart
 
 import 'package:flutter/material.dart';
+import 'package:operation_sunrise/change_notifier/ads_controller.dart';
 import 'package:operation_sunrise/change_notifier/level_controller.dart';
 import 'package:operation_sunrise/change_notifier/money_controller.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
@@ -177,10 +178,20 @@ class MenuDrawer extends StatelessWidget {
                       selected:
                           level.levelNumber ==
                           levelController.currentLevel?.levelNumber,
-                      onTap: () {
+                      onTap: () async {
                         Navigator.of(context).pop();
                         settings.setLastPlayedLevel(level.levelNumber);
                         levelController.selectLevelByNumber(level.levelNumber);
+                        final moneyController = context.read<MoneyController>();
+                        final adsController = context.read<AdsController>();
+                        final settingsController = context
+                            .read<SettingsController>();
+                        if (await settingsController
+                                .shouldShowInterstitialAd() &&
+                            !moneyController.isSubscribed() &&
+                            adsController.isInterstitialAvailable()) {
+                          adsController.showInterstitialAd();
+                        }
                       },
                     );
                   },

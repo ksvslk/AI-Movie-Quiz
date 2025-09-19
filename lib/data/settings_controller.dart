@@ -1,7 +1,3 @@
-// Copyright 2022, the Flutter project authors. Please see the AUTHORS file
-// for details. All rights reserved. Use of this source code is governed by a
-// BSD-style license that can be found in the LICENSE file.
-
 import 'dart:async';
 
 import 'package:firebase_remote_config/firebase_remote_config.dart';
@@ -19,6 +15,14 @@ class SettingsController with ChangeNotifier {
   ValueNotifier<bool> soundsOn = ValueNotifier(true);
   ValueNotifier<bool> autoplayOn = ValueNotifier(true);
   ValueNotifier<bool> loopingOn = ValueNotifier(true);
+
+  ValueNotifier<AppLifecycleState>? _lifecycleNotifier;
+  DateTime? _timeOfPause;
+  static const _sessionTimeout = Duration(seconds: 200);
+
+  // This variable now ONLY exists in memory.
+  DateTime? sessionStartTime;
+
   int _lastPlayedLevelNumber = 1;
   int get lastPlayedLevelNumber => _lastPlayedLevelNumber;
   bool isEulaAccepted = false;
@@ -27,8 +31,91 @@ class SettingsController with ChangeNotifier {
   SettingsController({required SettingsPersistence persistence})
     : _persistence = persistence;
 
-  /// Asynchronously loads values from the injected persistence store.
+  Future<bool> shouldShowInterstitialAd() async {
+    final appInstallTime = await _persistence.getAppInstallTime();
+    final now = DateTime.now().toUtc();
+    int minutes;
+
+    _log.log(
+      Level.INFO,
+      "⏰ appInstallTime: Level ${appInstallTime?.toIso8601String()}",
+    );
+    _log.log(
+      Level.INFO,
+      "⏱️ sessionStartTime: Level ${sessionStartTime?.toIso8601String()}",
+    );
+
+    if (appInstallTime != null) {
+      final days = FirebaseRemoteConfig.instance.getInt(C.dayBeforeFasterAds);
+      if (now.difference(appInstallTime).inDays < days) {
+        minutes = FirebaseRemoteConfig.instance.getInt(C.minutesBeforeFirstAd);
+        _log.log(Level.INFO, "now < appInstallTime, so minutes are $minutes");
+      } else {
+        minutes = FirebaseRemoteConfig.instance.getInt(
+          C.minutesBeforeFasterAds,
+        );
+        _log.log(Level.INFO, "now >= appInstallTime, so minutes are $minutes");
+      }
+      if (sessionStartTime != null) {
+        if (now.difference(sessionStartTime!).inMinutes >= minutes) {
+          _log.log(
+            Level.INFO,
+            "now >= sessionStartTime, so we SHOULD SHOW ADS!",
+          );
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+void _onAppLifecycleStateChanged() {
+  final state = _lifecycleNotifier?.value;
+  _log.log(Level.INFO, "AppLifecycleState: $state");
+
+  switch (state) {
+    case AppLifecycleState.paused:
+    case AppLifecycleState.inactive:
+    case AppLifecycleState.hidden:
+    case AppLifecycleState.detached:
+      _timeOfPause = DateTime.now().toUtc();
+      _log.log(Level.INFO, "App paused at: ${_timeOfPause!.toIso8601String()}");
+      break;
+    case AppLifecycleState.resumed:
+      final now = DateTime.now().toUtc();
+      final timeOfPause = _timeOfPause;
+      _log.log(Level.INFO, "timeOfPause: $timeOfPause");
+      
+      // Only update session time if we have a valid pause time AND the timeout exceeded
+      if (timeOfPause != null && now.difference(timeOfPause) > _sessionTimeout) {
+        // Update the in-memory variable directly.
+        sessionStartTime = now;
+        _log.log(Level.INFO, "Session timeout exceeded. New session started at: ${sessionStartTime!.toIso8601String()}");
+      } else if (timeOfPause != null) {
+        _log.log(Level.INFO, "Session continues (pause was ${now.difference(timeOfPause).inSeconds}s, timeout is ${_sessionTimeout.inSeconds}s)");
+      } else {
+        _log.log(Level.INFO, "App resumed without tracked pause. Continuing existing session started at: ${sessionStartTime?.toIso8601String()}");
+      }
+      break;
+    case null:
+      break;
+  }
+}
+
+  void attachLifecycleNotifier(ValueNotifier<AppLifecycleState> notifier) {
+    _lifecycleNotifier?.removeListener(_onAppLifecycleStateChanged);
+    _lifecycleNotifier = notifier;
+    _lifecycleNotifier?.addListener(_onAppLifecycleStateChanged);
+  }
+
   Future<void> loadStateFromPersistence() async {
+    if (sessionStartTime == null) {
+      sessionStartTime = DateTime.now().toUtc();
+      _log.log(
+        Level.INFO,
+        "Initial sessionStartTime set: ${sessionStartTime!.toIso8601String()}",
+      );
+    }
     await Future.wait([
       _persistence.getSoundsOn().then((value) => soundsOn.value = value),
       _persistence.getAutoplayOn().then((value) => autoplayOn.value = value),
@@ -50,8 +137,10 @@ class SettingsController with ChangeNotifier {
     }
   }
 
+  @override
   void dispose() {
     super.dispose();
+    _lifecycleNotifier?.removeListener(_onAppLifecycleStateChanged);
     soundsOn.dispose();
   }
 
@@ -82,10 +171,8 @@ class SettingsController with ChangeNotifier {
   Future<bool> canAskForReview() async {
     final now = DateTime.now().toUtc();
 
-    // Rule 2: Check if app was installed at least 15 minutes ago.
     final installTime = await _persistence.getAppInstallTime();
     if (installTime == null) {
-      // If we have no install time, we can't check the duration.
       return false;
     }
 
@@ -97,17 +184,14 @@ class SettingsController with ChangeNotifier {
       return false;
     }
 
-    // Rule 3: Check when the last review was asked.
     final lastAskTime = await _persistence.getLastReviewAskTime();
     if (lastAskTime == null) {
-      // Never asked before. All other conditions have passed.
       await _persistence.saveLastReviewAskTime();
       return true;
     }
 
     final days = FirebaseRemoteConfig.instance.getInt(C.dayBeforeReviewTag);
 
-    // It has been asked before. Check if it was at least 1 day ago.
     if (now.difference(lastAskTime).inDays >= days) {
       await _persistence.saveLastReviewAskTime();
       return true;

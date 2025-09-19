@@ -66,11 +66,11 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void revealHintByIndex(int index) {
+  void revealHintByIndex(int index, {bool playSound = true}) {
     if (index < availableHints.length && !availableHints[index].isRevealed) {
       availableHints[index].isRevealed = true;
       Future.delayed(Duration(milliseconds: 500)).then((a) {
-        audioController.playSfx(SfxType.reveal);
+        if (playSound) audioController.playSfx(SfxType.reveal);
         notifyListeners();
       });
     }

@@ -30,38 +30,44 @@ class AdsController extends ChangeNotifier {
   ValueNotifier<AppLifecycleState>? _lifecycleNotifier;
   TrackingStatus? _lastTrackingStatus;
 
-  // --- NEW: Timers to handle ad expiration ---
+  // Timers to handle ad expiration
   Timer? _rewardedAdTimer;
   Timer? _interstitialAdTimer;
-  // -----------------------------------------
+
   /*
+
+final rewardedAdUnitId = defaultTargetPlatform == TargetPlatform.android
+
+? 'ca-app-pub-5386053272091445/4314292015'
+
+// iOS
+
+: 'ca-app-pub-5386053272091445/9726346893';
+
+
+
+final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
+
+? 'ca-app-pub-5386053272091445/7323544832'
+
+// iOS
+
+: 'ca-app-pub-5386053272091445/4869644026';
+
+*/
+
+  // --- Ad Unit IDs ---
+  // Use test IDs for development to avoid policy violations.
+  // Replace with your real IDs before publishing.
   final rewardedAdUnitId = defaultTargetPlatform == TargetPlatform.android
-      ? 'ca-app-pub-5386053272091445/4314292015'
-      // iOS
-      : 'ca-app-pub-5386053272091445/9726346893';
+      ? 'ca-app-pub-3940256099942544/5224354917' // Android Test ID
+      : 'ca-app-pub-3940256099942544/1712485313'; // iOS Test ID
 
   final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
-      ? 'ca-app-pub-5386053272091445/7323544832'
-      // iOS
-      : 'ca-app-pub-5386053272091445/4869644026';
- */
-
-  //FAKE
-  final rewardedAdUnitId = defaultTargetPlatform == TargetPlatform.android
-      ? 'ca-app-pub-3940256099942544/5224354917'
-      // iOS
-      : 'ca-app-pub-3940256099942544/1712485313';
-
-  final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
-      ? 'ca-app-pub-3940256099942544/1033173712'
-      // iOS
-      : 'ca-app-pub-3940256099942544/4411468910';
+      ? 'ca-app-pub-3940256099942544/1033173712' // Android Test ID
+      : 'ca-app-pub-3940256099942544/4411468910'; // iOS Test ID
 
   /// Creates an [AdsController] that wraps around a [MobileAds] [instance].
-  ///
-  /// Example usage:
-  ///
-  ///     var controller = AdsController(MobileAds.instance);
   AdsController(MobileAds instance) : _instance = instance;
 
   @override
@@ -69,172 +75,155 @@ class AdsController extends ChangeNotifier {
     super.dispose();
     _rewardedAd?.dispose();
     _interstitialAd?.dispose();
-    // --- MODIFIED: Cancel timers on dispose to prevent memory leaks ---
     _rewardedAdTimer?.cancel();
     _interstitialAdTimer?.cancel();
     _lifecycleNotifier?.removeListener(_handleAppLifecycle);
-
-    // -----------------------------------------------------------------
   }
 
-  /// Initializes the injected [MobileAds.instance].
+  /// Initializes the Mobile Ads SDK and preloads ads.
   Future<void> initialize() async {
     await _instance.initialize();
+    // Preload ads after a short delay to not interfere with app startup.
     Future<void>.delayed(const Duration(seconds: 1)).then((_) {
-      return loadRewardedAd(null);
+      loadRewardedAd();
+      loadInterstitialAd();
     });
   }
 
+  /// Returns true if a rewarded ad is loaded and ready to be shown.
   bool isAdAvailable() {
     return _rewardedAd != null;
   }
 
-  void loadRewardedAd(AdRequest? adRequestNullable) {
+  bool isInterstitialAvailable() {
+    return _interstitialAd != null;
+  }
+
+  /// Loads a new rewarded ad.
+  void loadRewardedAd({AdRequest? adRequest}) {
     assert(
       Platform.isAndroid || Platform.isIOS,
       'AdMob currently does not support ${Platform.operatingSystem}',
     );
-    final adRequest = adRequestNullable ?? const AdRequest();
     RewardedAd.load(
       adUnitId: rewardedAdUnitId,
-      request: adRequest,
+      request: adRequest ?? const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
           _rewardedAd = ad;
-          _log.info('preloaded rewarded ad loaded.');
+          _log.info('Rewarded ad loaded.');
           _rewardedRetryCount = 0; // Reset retry count on success
 
-          // --- MODIFIED: Start a 1-hour timer to reload the ad before it expires ---
-          _rewardedAdTimer?.cancel(); // Cancel any existing timer
+          // Start a 1-hour timer to reload the ad before it expires
+          _rewardedAdTimer?.cancel();
           _rewardedAdTimer = Timer(const Duration(hours: 1), () {
             _log.info('Rewarded ad expired, reloading.');
             reloadRewardedAd();
           });
-          // -----------------------------------------------------------------------
 
           notifyListeners();
         },
         onAdFailedToLoad: ((error) async {
-          _log.info('preloaded rewarded ad not loaded - $error');
-          if (_rewardedRetryCount < _maxRetryCount) {
-            _rewardedRetryCount++;
-            final delay = _initialDelay * pow(2, _rewardedRetryCount - 1);
-            _log.info(
-              'Retrying rewarded ad load in ${delay.inSeconds} seconds...',
-            );
-            await Future.delayed(delay);
-            loadRewardedAd(adRequest);
-          } else {
-            _log.info('Max retries reached for rewarded. Not retrying.');
-          }
+          _log.warning('Rewarded ad failed to load: $error');
+          _retryWithExponentialBackoff(
+            () async => loadRewardedAd(adRequest: adRequest),
+            _rewardedRetryCount,
+            (count) => _rewardedRetryCount = count,
+            'rewarded ad load',
+          );
         }),
       ),
     );
   }
 
-  void loadInterstitialAd(AdRequest? adRequestNullable) {
+  /// Loads a new interstitial ad.
+  void loadInterstitialAd({AdRequest? adRequest}) {
     assert(
       Platform.isAndroid || Platform.isIOS,
       'AdMob currently does not support ${Platform.operatingSystem}',
     );
-    final adRequest = adRequestNullable ?? const AdRequest();
     InterstitialAd.load(
       adUnitId: intersitialAdUnitId,
-      request: adRequest,
+      request: adRequest ?? const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
           _interstitialAd = ad;
+          _log.info('Interstitial ad loaded.');
           _intersitialRetryCount = 0; // Reset retry count on success
 
-          // --- MODIFIED: Start a 1-hour timer to reload the ad before it expires ---
-          _interstitialAdTimer?.cancel(); // Cancel any existing timer
+          // Start a 1-hour timer to reload the ad before it expires
+          _interstitialAdTimer?.cancel();
           _interstitialAdTimer = Timer(const Duration(hours: 1), () {
             _log.info('Interstitial ad expired, reloading.');
             reloadInterstitialAd();
           });
-          // -----------------------------------------------------------------------
         },
         onAdFailedToLoad: ((error) async {
-          if (_intersitialRetryCount < _maxRetryCount) {
-            _intersitialRetryCount++;
-            final delay = _initialDelay * pow(2, _intersitialRetryCount - 1);
-            _log.info(
-              'Retrying interstitial ad load in ${delay.inSeconds} seconds...',
-            );
-            await Future.delayed(delay);
-            loadInterstitialAd(adRequest);
-          } else {
-            _log.info('Max retries reached for interstitial. Not retrying.');
-          }
+          _log.warning('Interstitial ad failed to load: $error');
+          _retryWithExponentialBackoff(
+            () async => loadInterstitialAd(adRequest: adRequest),
+            _intersitialRetryCount,
+            (count) => _intersitialRetryCount = count,
+            'interstitial ad load',
+          );
         }),
       ),
     );
   }
 
+  /// Disposes the current interstitial ad and loads a new one.
   void reloadInterstitialAd() {
     _interstitialAd?.dispose();
     _interstitialAd = null;
-    loadInterstitialAd(null);
+    loadInterstitialAd();
   }
 
+  /// Disposes the current rewarded ad and loads a new one.
   void reloadRewardedAd() {
     _rewardedAd?.dispose();
     _rewardedAd = null;
-    loadRewardedAd(null);
+    loadRewardedAd();
     notifyListeners();
   }
 
-  Future<void> showInterstitialAd() async {
+  /// Shows an interstitial ad if it's loaded.
+  void showInterstitialAd() {
     if (_interstitialAd == null) {
-      _log.info('Warning, attempt to show interstitial before loaded.');
-      loadInterstitialAd(null);
+      _log.warning('Attempted to show interstitial ad before it was loaded.');
+      loadInterstitialAd(); // Try to load one for next time
       return;
     }
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
-      // Called when the ad showed the full screen content.
-      onAdShowedFullScreenContent: (ad) {
-        _log.info('$ad onAdShowedFullScreenContent.');
-      },
-      // Called when an impression occurs on the ad.
-      onAdImpression: (ad) {
-        _log.info('$ad onAdImpression.');
-      },
-      // Called when the ad failed to show full screen content.
-      onAdFailedToShowFullScreenContent: (ad, err) {
-        // Dispose the ad here to free resources.
-        _log.info('$ad onAdImpression.');
-        _interstitialAd?.dispose();
-        _interstitialAd = null;
-      },
-      // Called when the ad dismissed full screen content.
       onAdDismissedFullScreenContent: (ad) {
-        // Dispose the ad here to free resources.
         _log.info('$ad onAdDismissedFullScreenContent.');
-        _interstitialAd?.dispose();
-        _interstitialAd = null;
-        loadInterstitialAd(null);
+        reloadInterstitialAd();
+      },
+      onAdFailedToShowFullScreenContent: (ad, err) {
+        _log.severe('$ad failed to show full screen content: $err');
+        reloadInterstitialAd();
       },
     );
+
     if (Platform.isAndroid) _interstitialAd!.setImmersiveMode(true);
     _interstitialAd!.show();
+    _interstitialAd = null;
   }
 
-  Future<void> showRewardedAd(Function giveRewardCallback) async {
+  /// Shows a rewarded ad if it's loaded.
+  ///
+  /// The [onReward] callback is executed if the user earns the reward.
+  void showRewardedAd(VoidCallback onReward) {
     if (_rewardedAd == null) {
-      _log.info('Warning, attempt to show rewarded before loaded.');
+      _log.warning('Attempted to show rewarded ad before it was loaded.');
       return;
     }
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
-      onAdShowedFullScreenContent: (RewardedAd ad) {
-        _log.info('ad onAdShowedFullScreenContent.');
-      },
-      onAdDismissedFullScreenContent: (RewardedAd ad) {
+      onAdDismissedFullScreenContent: (ad) {
         _log.info('$ad onAdDismissedFullScreenContent.');
-        giveRewardCallback.call();
         reloadRewardedAd();
       },
-      onAdFailedToShowFullScreenContent: (RewardedAd ad, AdError error) {
-        _log.info('$ad onAdFailedToShowFullScreenContent: $error');
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        _log.severe('$ad onAdFailedToShowFullScreenContent: $error');
         reloadRewardedAd();
       },
     );
@@ -245,16 +234,19 @@ class AdsController extends ChangeNotifier {
         _log.info(
           '$ad with reward $RewardItem(${reward.amount}, ${reward.type})',
         );
+        onReward();
       },
     );
+    _rewardedAd = null;
   }
 
+  /// Requests the latest consent information from the User Messaging Platform.
   Future<void> requestTheLatestConsentInformation() async {
     final params = ConsentRequestParameters();
     ConsentInformation.instance.requestConsentInfoUpdate(
       params,
       () async {
-        _consentRetryCount = 0; // Reset retry count on success
+        _consentRetryCount = 0; // Reset on success
         var status = await ConsentInformation.instance.getConsentStatus();
         if (status == ConsentStatus.obtained ||
             status == ConsentStatus.notRequired) {
@@ -262,87 +254,76 @@ class AdsController extends ChangeNotifier {
           return;
         }
         if (await ConsentInformation.instance.isConsentFormAvailable()) {
-          loadForm();
+          loadConsentForm();
         }
       },
       (FormError error) async {
-        _log.log(Level.SEVERE, 'Could request consent info update: $error');
-        if (_consentRetryCount < _maxRetryCount) {
-          _consentRetryCount++;
-          final delay = _initialDelay * pow(2, _consentRetryCount - 1);
-          _log.info(
-            'Retrying consent information update in ${delay.inSeconds} seconds...',
-          );
-          await Future.delayed(delay);
-          requestTheLatestConsentInformation();
-        } else {
-          _log.info(
-            'Max retries reached for consent information update. Not retrying.',
-          );
-        }
+        _log.severe('Consent info update failed: $error');
+        _retryWithExponentialBackoff(
+          requestTheLatestConsentInformation,
+          _consentRetryCount,
+          (count) => _consentRetryCount = count,
+          'consent info update',
+        );
       },
     );
   }
 
-  Future<void> loadForm() async {
+  /// Loads and shows the consent form if required.
+  Future<void> loadConsentForm() async {
     ConsentForm.loadConsentForm(
       (ConsentForm consentForm) async {
-        _consentRetryCount = 0; // Reset retry count on success
+        _consentRetryCount = 0; // Reset on success
         var status = await ConsentInformation.instance.getConsentStatus();
         if (status == ConsentStatus.required) {
           consentForm.show((FormError? formError) {
-            // Handle dismissal by reloading form
-            _log.log(
-              Level.SEVERE,
-              'Consent form dismissed, reloading. $formError',
-            );
-            loadForm();
+            _log.warning('Consent form dismissed, reloading. $formError');
+            loadConsentForm(); // Handle dismissal by reloading the form
           });
-        } else if (status == ConsentStatus.obtained ||
-            status == ConsentStatus.notRequired) {
+        } else {
           initialize();
         }
       },
       (formError) async {
-        _log.log(Level.SEVERE, 'Could not load consent form: $formError');
-        if (_consentRetryCount < _maxRetryCount) {
-          _consentRetryCount++;
-          final delay = _initialDelay * pow(2, _consentRetryCount - 1);
-          _log.info(
-            'Retrying loading consent form in ${delay.inSeconds} seconds...',
-          );
-          await Future.delayed(delay);
-          loadForm();
-        } else {
-          _log.info(
-            'Max retries reached for loading consent form. Not retrying.',
-          );
-        }
+        _log.severe('Failed to load consent form: $formError');
+        _retryWithExponentialBackoff(
+          loadConsentForm,
+          _consentRetryCount,
+          (count) => _consentRetryCount = count,
+          'consent form load',
+        );
       },
     );
   }
 
-  Future<void> _checkTrackingAuthorizationChanges() async {
-    try {
-      final currentStatus =
-          await AppTrackingTransparency.trackingAuthorizationStatus;
-      if (_lastTrackingStatus != TrackingStatus.authorized &&
-          currentStatus == TrackingStatus.authorized &&
-          this != null) {
-        requestTheLatestConsentInformation();
-      }
-      _lastTrackingStatus = currentStatus;
-    } catch (e) {
-      _log.log(Level.WARNING, "Could not check tracking authorization changes");
-    }
-  }
-
+  /// Attaches a listener to the app's lifecycle to check for ATT changes on iOS.
   void attachLifecycleNotifier(
     ValueNotifier<AppLifecycleState> lifecycleNotifier,
   ) {
     _lifecycleNotifier?.removeListener(_handleAppLifecycle);
     lifecycleNotifier.addListener(_handleAppLifecycle);
     _lifecycleNotifier = lifecycleNotifier;
+  }
+
+  /// Centralized retry logic with exponential backoff.
+  Future<void> _retryWithExponentialBackoff(
+    Future<void> Function() action,
+    int currentRetryCount,
+    void Function(int) updateRetryCount,
+    String logContext,
+  ) async {
+    if (currentRetryCount < _maxRetryCount) {
+      final newCount = currentRetryCount + 1;
+      updateRetryCount(newCount);
+      final delay = _initialDelay * pow(2, newCount - 1);
+      _log.info(
+        'Retrying $logContext in ${delay.inSeconds} seconds... (Attempt $newCount/$_maxRetryCount)',
+      );
+      await Future.delayed(delay);
+      await action();
+    } else {
+      _log.severe('Max retries reached for $logContext. Not retrying.');
+    }
   }
 
   void _handleAppLifecycle() {
@@ -353,4 +334,18 @@ class AdsController extends ChangeNotifier {
     }
   }
 
+  Future<void> _checkTrackingAuthorizationChanges() async {
+    try {
+      final currentStatus =
+          await AppTrackingTransparency.trackingAuthorizationStatus;
+      if (_lastTrackingStatus != TrackingStatus.authorized &&
+          currentStatus == TrackingStatus.authorized) {
+        // If the user just granted permission, re-request consent info.
+        await requestTheLatestConsentInformation();
+      }
+      _lastTrackingStatus = currentStatus;
+    } catch (e) {
+      _log.warning('Could not check tracking authorization changes: $e');
+    }
+  }
 }

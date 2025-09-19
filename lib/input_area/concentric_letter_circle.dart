@@ -454,7 +454,7 @@ class _LetterCircleButtonState extends State<_LetterCircleButton>
         size: widget.size * 0.5,
       );
     } else {
-      final double finalFontSize = widget.size * 0.70;
+      final double finalFontSize = widget.size * 0.6;
 
       final textStyle = TextStyle(
         color: Colors.white,
@@ -713,7 +713,7 @@ class _ArcButtonControllerState extends State<ArcButtonController>
         if (!game.availableHints[i].isRevealed) {
           // This call will notify listeners of the GameController, causing a
           // rebuild and ensuring this logic doesn't run again for this hint.
-          game.revealHintByIndex(i);
+          game.revealHintByIndex(i, playSound: false);
         }
       }
     }

@@ -132,8 +132,12 @@ Future<void> main() async {
   // Initialize core services
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FirebaseAppCheck.instance.activate(
-    androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-    appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttestWithDeviceCheckFallback,
+    androidProvider: kDebugMode
+        ? AndroidProvider.debug
+        : AndroidProvider.playIntegrity,
+    appleProvider: kDebugMode
+        ? AppleProvider.debug
+        : AppleProvider.appAttestWithDeviceCheckFallback,
   );
 
   // --- NEW: Perform anonymous sign-in right after App Check ---
@@ -177,15 +181,6 @@ Future<void> main() async {
     }
   }
 
-  final settingsController = SettingsController(
-    persistence: LocalStorageSettingsPersistence(),
-  );
-  await settingsController.loadStateFromPersistence();
-  final levelController = LevelController(
-    settingsController: settingsController,
-  );
-  await levelController.setupFCMListeners();
-
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -194,8 +189,37 @@ Future<void> main() async {
     AppLifecycleObserver(
       child: MultiProvider(
         providers: [
-          ChangeNotifierProvider.value(value: settingsController),
-          ChangeNotifierProvider.value(value: levelController),
+          // 1. CREATE SettingsController HERE using a ProxyProvider.
+          // This allows it to depend on the lifecycle notifier.
+          ChangeNotifierProxyProvider<
+            ValueNotifier<AppLifecycleState>,
+            SettingsController
+          >(
+            create: (context) => SettingsController(
+              persistence: LocalStorageSettingsPersistence(),
+            )..loadStateFromPersistence(), // Load state upon creation
+            update: (context, lifecycleNotifier, settings) {
+              if (settings == null) throw ArgumentError.notNull();
+              settings.attachLifecycleNotifier(
+                lifecycleNotifier,
+              ); // Attach here
+              return settings;
+            },
+          ),
+
+          // 2. CREATE LevelController HERE. It now depends on the
+          // SettingsController created just above.
+          ChangeNotifierProxyProvider<SettingsController, LevelController>(
+            create: (context) => LevelController(
+              // Read the controller from the context
+              settingsController: context.read<SettingsController>(),
+            )..setupFCMListeners(),
+            update: (context, settings, level) {
+              if (level == null) throw ArgumentError.notNull();
+              // No update logic needed, but the pattern requires it.
+              return level;
+            },
+          ),
           ProxyProvider2<
             SettingsController,
             ValueNotifier<AppLifecycleState>,

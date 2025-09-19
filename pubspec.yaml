@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+9
+version: 1.0.0+10
 
 environment:
   sdk: ^3.9.2
@@ -60,6 +60,8 @@ dependencies:
   lottie: ^3.1.2
   flutter_cache_manager: ^3.3.2
   in_app_review: ^2.0.10
+  flutter_native_splash: ^2.4.6
+  flutter_launcher_icons: ^0.14.4
   
 dev_dependencies:
   flutter_test:
@@ -74,6 +76,29 @@ dev_dependencies:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/icon.png"
+  min_sdk_android: 21 # android min sdk min:16, default 21
+
+flutter_native_splash:
+  color: "#000000"
+  image: assets/images/icon_launcher.png
+  branding: assets/images/icon_launcher.png
+  branding_bottom_padding: 24
+  color_dark: "#000000"
+  image_dark: assets/images/icon_launcher.png
+  branding_dark: assets/images/icon_launcher.png
+
+  android_12:
+    image: assets/images/icon_launcher.png
+    icon_background_color: "#000000"
+    image_dark: assets/images/icon_launcher.png
+    icon_background_color_dark: "#000000"
+
+  web: false
 
 # The following section is specific to Flutter packages.
 flutter:

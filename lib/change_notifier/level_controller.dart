@@ -4,10 +4,15 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/data/level_info.dart';
 
 class LevelController extends ChangeNotifier {
+
+  final Logger _log = Logger('level_controller.dart');
+
+
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final SettingsController _settingsController;
   late StreamSubscription<QuerySnapshot> _levelsSubscription;
@@ -37,8 +42,7 @@ class LevelController extends ChangeNotifier {
       .snapshots()
       .listen(
         (snapshot) {
-          print("[Debug] Firestore data received. Number of changes: ${snapshot.docChanges.length}");
-
+          _log.log(Level.INFO, "[Debug] Firestore data received. Number of changes: ${snapshot.docChanges.length}");
           // --- KEY CHANGE IS HERE ---
           // Instead of rebuilding the whole list from scratch, we process
           // the individual changes that Firestore tells us about.
@@ -52,7 +56,8 @@ class LevelController extends ChangeNotifier {
                 // load of levels is already complete.
                 if (_initialLoadCompleter.isCompleted) {
                   // This is a TRUE new level that was added while the app was running.
-                  print("✅ REAL NEW LEVEL ADDED: Level ${newLevel.levelNumber} - '${newLevel.characteristic}'");
+          _log.log(Level.INFO, "✅ REAL NEW LEVEL ADDED: Level ${newLevel.levelNumber} - '${newLevel.characteristic}'");
+
                   lastLevelAdded = newLevel; // Or fire your Stream event here
                 } else {
                   // This is just part of the initial data load.
@@ -66,7 +71,8 @@ class LevelController extends ChangeNotifier {
               case DocumentChangeType.modified:
                 // (This logic remains the same)
                 final modifiedLevel = LevelInfo.fromFirestore(change.doc);
-                print("🔄 LEVEL MODIFIED: Level ${modifiedLevel.levelNumber} - '${modifiedLevel.characteristic}'");
+          _log.log(Level.INFO, "🔄 LEVEL MODIFIED: Level ${modifiedLevel.levelNumber} - '${modifiedLevel.characteristic}'");
+
                 final index = levels.indexWhere((l) => l.id == modifiedLevel.id);
                 if (index != -1) {
                   levels[index] = modifiedLevel;
@@ -76,7 +82,8 @@ class LevelController extends ChangeNotifier {
               case DocumentChangeType.removed:
                 // (This logic remains the same)
                 final removedLevel = LevelInfo.fromFirestore(change.doc);
-                print("❌ LEVEL REMOVED: Level ${removedLevel.levelNumber}");
+          _log.log(Level.INFO, "❌ LEVEL REMOVED: Level ${removedLevel.levelNumber}");
+
                 levels.removeWhere((l) => l.id == removedLevel.id);
                 break;
             }
@@ -90,18 +97,22 @@ class LevelController extends ChangeNotifier {
           // It runs AFTER the loop above has processed the first batch.
           if (!_initialLoadCompleter.isCompleted) {
             _initialLoadCompleter.complete();
-            print("[Debug] Initial load complete. UI is now unlocked.");
+          _log.log(Level.INFO, "[Debug] Initial load complete. UI is now unlocked.");
+
           }
 
           // (The rest of your method remains the same)
           if (!snapshot.metadata.isFromCache) {
             if (_processPendingLevel()) {
-              // ...
+               _log.log(Level.INFO, "Should process pending level, not from cache");
             } else {
+               _log.log(Level.INFO, "_findInitialLevel, process pending level false");
               _findInitialLevel();
             }
           } else {
             _findInitialLevel();
+             _log.log(Level.INFO, "snapshot.metadata.isFromCache");
+
           }
           
           notifyListeners();

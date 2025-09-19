@@ -9,6 +9,7 @@ import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/change_notifier/ads_controller.dart';
 import 'package:operation_sunrise/change_notifier/game_controller.dart';
 import 'package:operation_sunrise/change_notifier/level_controller.dart';
+import 'package:operation_sunrise/change_notifier/money_controller.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/input_area/concentric_letter_circle.dart';
 import 'package:operation_sunrise/data/level_info.dart';
@@ -44,11 +45,24 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-void _goToNextLevel() {
+  Future<void> _goToNextLevel() async {
+    if (!mounted) return;
+
     final levelController = context.read<LevelController>();
     final nextLevel = levelController.advanceFrom(widget.levelInfo.levelNumber);
 
+    final moneyController = context.read<MoneyController>();
+    final adsController = context.read<AdsController>();
+    final settingsController = context.read<SettingsController>();
+
+    if (await settingsController.shouldShowInterstitialAd() &&
+        !moneyController.isSubscribed() &&
+        adsController.isInterstitialAvailable()) {
+      adsController.showInterstitialAd();
+    }
+
     if (nextLevel == null) {
+      if (!mounted) return;
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -57,20 +71,27 @@ void _goToNextLevel() {
           final screenWidth = MediaQuery.of(context).size.width;
 
           // Define responsive sizes
-          final double dialogWidth = screenWidth * 0.85; // Dialog takes up 85% of screen width
-          final double lottieSize = screenWidth * 0.4; // Animation is 40% of screen width (slightly smaller)
+          final double dialogWidth =
+              screenWidth * 0.85; // Dialog takes up 85% of screen width
+          final double lottieSize =
+              screenWidth *
+              0.4; // Animation is 40% of screen width (slightly smaller)
 
           return Dialog(
-            backgroundColor: Colors.transparent, // Keep transparent for custom shape
+            backgroundColor:
+                Colors.transparent, // Keep transparent for custom shape
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: dialogWidth),
-              child: Container( // Now the main dialog container holds everything
+              child: Container(
+                // Now the main dialog container holds everything
                 decoration: BoxDecoration(
                   color: Colors.grey[850], // A dark background color
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: Colors.blueGrey.shade700, width: 2),
                 ),
-                padding: const EdgeInsets.all(20), // Padding for content inside the container
+                padding: const EdgeInsets.all(
+                  20,
+                ), // Padding for content inside the container
                 child: Column(
                   mainAxisSize: MainAxisSize.min, // Fit content vertically
                   children: [
@@ -82,7 +103,9 @@ void _goToNextLevel() {
                         repeat: true,
                       ),
                     ),
-                    const SizedBox(height: 20), // Spacing between animation and text
+                    const SizedBox(
+                      height: 20,
+                    ), // Spacing between animation and text
                     Text(
                       'Congratulations!',
                       style: TextStyle(
@@ -104,7 +127,10 @@ void _goToNextLevel() {
                     TextButton(
                       style: TextButton.styleFrom(
                         backgroundColor: Colors.green.shade600,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -118,7 +144,9 @@ void _goToNextLevel() {
                         ),
                       ),
                       onPressed: () {
-                        Navigator.of(context).popUntil((route) => route.isFirst);
+                        Navigator.of(
+                          context,
+                        ).popUntil((route) => route.isFirst);
                       },
                     ),
                   ],

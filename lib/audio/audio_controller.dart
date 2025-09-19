@@ -1,22 +1,27 @@
 // lib/audio/audio_controller.dart
 
-// Copyright 2022, the Flutter project authors. Please see the AUTHORS file
-// for details. All rights reserved. Use of this source code is governed by a
-// BSD-style license that can be found in the LICENSE file.
-
-import 'package:flutter/widgets.dart';
+import 'dart:async';
+import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
 import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:real_volume/real_volume.dart';
 
-/// A controller that allows playing sound effects.
+/// A controller that allows playing sound effects and broadcasts system mute state.
 class AudioController {
   static final _log = Logger('AudioController');
 
   SettingsController? _settings;
   ValueNotifier<AppLifecycleState>? _lifecycleNotifier;
+
+  /// A Notifier that broadcasts the system mute state to the rest of the app.
+  /// `true` if the system is muted (silent/vibrate), `false` otherwise.
+  final ValueNotifier<bool> isMutedNotifier = ValueNotifier(false);
+
+  /// A subscription to the native ringer mode stream to detect real-time changes.
+  StreamSubscription? _ringerModeSubscription;
 
   /// A mapping of sound effects to their preloaded audio sources.
   final Map<SfxType, AudioSource> _sfxs = {};
@@ -48,13 +53,19 @@ class AudioController {
 
   void dispose() {
     _lifecycleNotifier?.removeListener(_handleAppLifecycle);
+    // Cancel the stream subscription to prevent memory leaks.
+    _ringerModeSubscription?.cancel();
     _stopAllSound();
     SoLoud.instance.deinit();
   }
 
-  /// Preloads all sound effects.
+  /// Initializes the audio engine, loads all sound effects, and starts listening
+  /// for system mute changes.
   Future<void> initialize() async {
     await SoLoud.instance.init();
+
+    // Start the listener for real-time system volume changes.
+    await _initRingerModeListener();
 
     try {
       // Load all sounds into the map
@@ -83,6 +94,30 @@ class AudioController {
     }
   }
 
+  /// Sets up the real-time listener for ringer mode changes.
+  Future<void> _initRingerModeListener() async {
+    // Get the initial state first.
+    final initialMode = await RealVolume.getRingerMode();
+    isMutedNotifier.value =
+        (initialMode == RingerMode.SILENT || initialMode == RingerMode.VIBRATE);
+
+    // Now, listen for any future changes.
+    _ringerModeSubscription = RealVolume.onRingerModeChanged.listen((mode) {
+      final bool isMuted =
+          (mode == RingerMode.SILENT || mode == RingerMode.VIBRATE);
+
+      // If the mute state has changed, update the notifier.
+      if (isMutedNotifier.value != isMuted) {
+        isMutedNotifier.value = isMuted;
+      }
+
+      // If the system is now muted, stop all currently playing sound effects.
+      if (isMuted) {
+        _stopAllSound();
+      }
+    });
+  }
+
   /// Helper to load a single sound effect and add it to the map.
   Future<void> _loadSfx(SfxType type, String assetPath) async {
     final source = await SoLoud.instance.loadAsset(assetPath);
@@ -91,9 +126,8 @@ class AudioController {
 
   /// Plays a sound effect of the given [type].
   void playSfx(SfxType type) async {
-    // Check device ringer mode first.
-    final ringerMode = await RealVolume.getRingerMode();
-    if (ringerMode == RingerMode.SILENT || ringerMode == RingerMode.VIBRATE) {
+    // Check the notifier's current value synchronously.
+    if (isMutedNotifier.value || _lifecycleNotifier!.value == AppLifecycleState.inactive) {
       return;
     }
 
@@ -103,17 +137,9 @@ class AudioController {
       return;
     }
 
-    // Check if app is in foreground.
-    /*
-    if (_lifecycleNotifier?.value == AppLifecycleState.paused) {
-      return;
-    }
-    */
-
     // Find the preloaded sound and play it.
     final sound = _sfxs[type];
     if (sound != null) {
-      // Capture the handle when you play the sound
       final handle = await SoLoud.instance.play(sound);
       _activeSounds.add(handle);
     } else {
@@ -126,11 +152,13 @@ class AudioController {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
+      case AppLifecycleState.inactive: // Mute when app is interrupted
         _stopAllSound();
+        isMutedNotifier.value = true;
         break;
       case AppLifecycleState.resumed:
-      case AppLifecycleState.inactive:
-        // No need to do anything when resuming or going inactive.
+        // Unmute when app becomes active again.
+        isMutedNotifier.value = false;
         break;
     }
   }
@@ -143,11 +171,9 @@ class AudioController {
   }
 
   void _stopAllSound() {
-    // Stop each sound individually
     for (final handle in _activeSounds) {
       SoLoud.instance.stop(handle);
     }
-    // Clear the list of active sounds
     _activeSounds.clear();
   }
 }

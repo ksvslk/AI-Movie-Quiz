@@ -4,6 +4,7 @@
 
 import 'dart:convert';
 
+import 'package:logging/logging.dart';
 import 'package:operation_sunrise/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_persistence.dart';
@@ -13,6 +14,9 @@ import 'settings_persistence.dart';
 class LocalStorageSettingsPersistence extends SettingsPersistence {
   final Future<SharedPreferences> instanceFuture =
       SharedPreferences.getInstance();
+
+  final Logger _log = Logger('LocalStorageSettingsPersistence');
+
 
   @override
   Future<bool> getSoundsOn() async {

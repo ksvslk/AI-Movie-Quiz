@@ -25,7 +25,4 @@ abstract class SettingsPersistence {
 
   Future<DateTime?> getAppInstallTime();
   Future<DateTime?> getLastReviewAskTime();
-
-
-  
 }
