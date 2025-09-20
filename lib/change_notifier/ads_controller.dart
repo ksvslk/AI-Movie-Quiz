@@ -7,10 +7,12 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:logging/logging.dart';
+import 'package:operation_sunrise/constants.dart';
 
 /// Allows showing ads. A facade for `package:google_mobile_ads`.
 class AdsController extends ChangeNotifier {
@@ -34,38 +36,30 @@ class AdsController extends ChangeNotifier {
   Timer? _rewardedAdTimer;
   Timer? _interstitialAdTimer;
 
-  /*
+  final rewardedAdUnitId = FirebaseRemoteConfig.instance.getBool(C.testAdsTag)
+      ? (defaultTargetPlatform == TargetPlatform.android
+            // Android
+            ? 'ca-app-pub-3940256099942544/5224354917'
+            // iOS
+            : 'ca-app-pub-3940256099942544/1712485313')
+      : (defaultTargetPlatform == TargetPlatform.android
+            // Android
+            ? ('ca-app-pub-5386053272091445/4314292015')
+            // iOS
+            : 'ca-app-pub-5386053272091445/9726346893');
 
-final rewardedAdUnitId = defaultTargetPlatform == TargetPlatform.android
-
-? 'ca-app-pub-5386053272091445/4314292015'
-
-// iOS
-
-: 'ca-app-pub-5386053272091445/9726346893';
-
-
-
-final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
-
-? 'ca-app-pub-5386053272091445/7323544832'
-
-// iOS
-
-: 'ca-app-pub-5386053272091445/4869644026';
-
-*/
-
-  // --- Ad Unit IDs ---
-  // Use test IDs for development to avoid policy violations.
-  // Replace with your real IDs before publishing.
-  final rewardedAdUnitId = defaultTargetPlatform == TargetPlatform.android
-      ? 'ca-app-pub-3940256099942544/5224354917' // Android Test ID
-      : 'ca-app-pub-3940256099942544/1712485313'; // iOS Test ID
-
-  final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
-      ? 'ca-app-pub-3940256099942544/1033173712' // Android Test ID
-      : 'ca-app-pub-3940256099942544/4411468910'; // iOS Test ID
+  final intersitialAdUnitId =
+      FirebaseRemoteConfig.instance.getBool(C.testAdsTag)
+      ? (defaultTargetPlatform == TargetPlatform.android
+            // Android
+            ? 'ca-app-pub-3940256099942544/5224354917'
+            // iOS
+            : 'ca-app-pub-3940256099942544/1712485313')
+      : (defaultTargetPlatform == TargetPlatform.android
+            // Android
+            ? ('ca-app-pub-5386053272091445/7323544832')
+            // iOS
+            : 'ca-app-pub-5386053272091445/4869644026');
 
   /// Creates an [AdsController] that wraps around a [MobileAds] [instance].
   AdsController(MobileAds instance) : _instance = instance;
@@ -111,20 +105,17 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
           _rewardedAd = ad;
-          _log.info('Rewarded ad loaded.');
           _rewardedRetryCount = 0; // Reset retry count on success
 
           // Start a 1-hour timer to reload the ad before it expires
           _rewardedAdTimer?.cancel();
           _rewardedAdTimer = Timer(const Duration(hours: 1), () {
-            _log.info('Rewarded ad expired, reloading.');
             reloadRewardedAd();
           });
 
           notifyListeners();
         },
         onAdFailedToLoad: ((error) async {
-          _log.warning('Rewarded ad failed to load: $error');
           _retryWithExponentialBackoff(
             () async => loadRewardedAd(adRequest: adRequest),
             _rewardedRetryCount,
@@ -148,18 +139,15 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
           _interstitialAd = ad;
-          _log.info('Interstitial ad loaded.');
           _intersitialRetryCount = 0; // Reset retry count on success
 
           // Start a 1-hour timer to reload the ad before it expires
           _interstitialAdTimer?.cancel();
           _interstitialAdTimer = Timer(const Duration(hours: 1), () {
-            _log.info('Interstitial ad expired, reloading.');
             reloadInterstitialAd();
           });
         },
         onAdFailedToLoad: ((error) async {
-          _log.warning('Interstitial ad failed to load: $error');
           _retryWithExponentialBackoff(
             () async => loadInterstitialAd(adRequest: adRequest),
             _intersitialRetryCount,
@@ -189,17 +177,14 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
   /// Shows an interstitial ad if it's loaded.
   void showInterstitialAd() {
     if (_interstitialAd == null) {
-      _log.warning('Attempted to show interstitial ad before it was loaded.');
       loadInterstitialAd(); // Try to load one for next time
       return;
     }
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
-        _log.info('$ad onAdDismissedFullScreenContent.');
         reloadInterstitialAd();
       },
       onAdFailedToShowFullScreenContent: (ad, err) {
-        _log.severe('$ad failed to show full screen content: $err');
         reloadInterstitialAd();
       },
     );
@@ -214,16 +199,13 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
   /// The [onReward] callback is executed if the user earns the reward.
   void showRewardedAd(VoidCallback onReward) {
     if (_rewardedAd == null) {
-      _log.warning('Attempted to show rewarded ad before it was loaded.');
       return;
     }
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
-        _log.info('$ad onAdDismissedFullScreenContent.');
         reloadRewardedAd();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
-        _log.severe('$ad onAdFailedToShowFullScreenContent: $error');
         reloadRewardedAd();
       },
     );
@@ -231,9 +213,6 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
     if (Platform.isAndroid) _rewardedAd!.setImmersiveMode(true);
     _rewardedAd!.show(
       onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
-        _log.info(
-          '$ad with reward $RewardItem(${reward.amount}, ${reward.type})',
-        );
         onReward();
       },
     );
@@ -258,7 +237,6 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
         }
       },
       (FormError error) async {
-        _log.severe('Consent info update failed: $error');
         _retryWithExponentialBackoff(
           requestTheLatestConsentInformation,
           _consentRetryCount,
@@ -277,7 +255,6 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
         var status = await ConsentInformation.instance.getConsentStatus();
         if (status == ConsentStatus.required) {
           consentForm.show((FormError? formError) {
-            _log.warning('Consent form dismissed, reloading. $formError');
             loadConsentForm(); // Handle dismissal by reloading the form
           });
         } else {
@@ -285,7 +262,6 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
         }
       },
       (formError) async {
-        _log.severe('Failed to load consent form: $formError');
         _retryWithExponentialBackoff(
           loadConsentForm,
           _consentRetryCount,
@@ -316,9 +292,6 @@ final intersitialAdUnitId = defaultTargetPlatform == TargetPlatform.android
       final newCount = currentRetryCount + 1;
       updateRetryCount(newCount);
       final delay = _initialDelay * pow(2, newCount - 1);
-      _log.info(
-        'Retrying $logContext in ${delay.inSeconds} seconds... (Attempt $newCount/$_maxRetryCount)',
-      );
       await Future.delayed(delay);
       await action();
     } else {

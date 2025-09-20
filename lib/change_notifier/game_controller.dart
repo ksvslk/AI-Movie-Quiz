@@ -5,21 +5,22 @@ import 'package:operation_sunrise/audio/audio_controller.dart';
 import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/data/hint.dart';
 import 'package:operation_sunrise/data/level_info.dart';
+import 'package:operation_sunrise/data/settings_controller.dart';
 
 class GameController extends ChangeNotifier {
   final LevelInfo levelInfo;
   final AudioController audioController;
-
+  final SettingsController settingsController; // 2. Change dependency
+  
   final String displaySolution;
   final List<String> _userInput = [];
   late final int puzzleLength;
 
-  // NEW: A boolean to track the solved state.
   bool _isSolved = false;
 
   List<Hint> availableHints = [];
 
-  GameController({required this.levelInfo, required this.audioController})
+  GameController({required this.levelInfo, required this.audioController, required this.settingsController})
     : displaySolution = levelInfo.name {
     puzzleLength = displaySolution.replaceAll(' ', '').length;
     _initializeHints();
@@ -38,13 +39,11 @@ class GameController extends ChangeNotifier {
 
   List<String> get userInput => _userInput;
 
-  // NEW: Public getter for the UI to read the solved state.
   bool get isSolved => _isSolved;
 
   void onLetterTapped(String letter) {
     if (_userInput.length < puzzleLength) {
       _userInput.add(letter);
-      // MODIFIED: Check win condition before notifying listeners.
       _checkWinCondition();
       notifyListeners();
     }
@@ -53,7 +52,6 @@ class GameController extends ChangeNotifier {
   void onBackspaceTapped() {
     if (_userInput.isNotEmpty) {
       _userInput.removeLast();
-      // MODIFIED: If the user backspaces, the puzzle is no longer solved.
       _isSolved = false;
       notifyListeners();
     }
@@ -61,7 +59,6 @@ class GameController extends ChangeNotifier {
 
   void onClearAllTapped() {
     _userInput.clear();
-    // MODIFIED: If the user clears, the puzzle is no longer solved.
     _isSolved = false;
     notifyListeners();
   }
@@ -69,37 +66,20 @@ class GameController extends ChangeNotifier {
   void revealHintByIndex(int index, {bool playSound = true}) {
     if (index < availableHints.length && !availableHints[index].isRevealed) {
       availableHints[index].isRevealed = true;
-      Future.delayed(Duration(milliseconds: 500)).then((a) {
-        if (playSound) audioController.playSfx(SfxType.reveal);
-        notifyListeners();
-      });
+      notifyListeners();
     }
   }
-
-  // In game_controller.dart
 
   void _checkWinCondition() {
     if (_userInput.length == puzzleLength && !_isSolved) {
       String userInputString = _userInput.join('');
       String solutionString = displaySolution.replaceAll(' ', '');
 
-      // --- DEBUGGING AND FIX ---
-      // 1. Print the values to see what's being compared in your debug console.
-      print("Checking win condition...");
-      print("User Input: '$userInputString'");
-      print("Solution:   '$solutionString'");
-
-      // 2. Make the comparison case-insensitive by converting both to lowercase.
       if (userInputString.toLowerCase() == solutionString.toLowerCase()) {
-        print(
-          "SUCCESS: Strings match! Setting isSolved to true.",
-        ); // <-- This should print when you win
+        settingsController.markLevelAsCompleted(levelInfo.levelNumber);
         playWinSound();
         _isSolved = true;
-      } else {
-        print("FAILURE: Strings do not match.");
       }
-      // --- END DEBUGGING AND FIX ---
     }
   }
 

@@ -8,6 +8,7 @@ class C {
 
   static const String minutesBeforeReviewTag = "MINUTES_BEFORE_REVIEW";
   static const String dayBeforeReviewTag = "DAY_BEFORE_REVIEW";
+  static const String testAdsTag = "TEST_ADS";
 
   static const String premiumInfoText = "PREMIUM_INFO_TEXT";
   static const String debugVersionTag = "DEBUG_VERSION";

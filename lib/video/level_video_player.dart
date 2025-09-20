@@ -281,36 +281,33 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
             child: Chewie(controller: _chewieController!),
           ),
         if (!isVideoReady || _loadingOpacityController.value > 0)
-          IgnorePointer(
+   IgnorePointer(
             ignoring: isVideoReady,
             child: FadeTransition(
               opacity: _loadingOpacityAnimation,
               child: AspectRatio(
                 aspectRatio: 16 / 9,
-                child: Container(
-                  color: Colors.white,
-                  child: Center(
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: <Widget>[
-                        Image.asset(
-                          'assets/images/cinema_screen.jpg',
-                          width: 640,
-                          height: 360,
-                          fit: BoxFit.cover,
-                        ),
-                        Lottie.asset(
-                          'assets/animation/panda_red.json',
-                          width: 300,
-                          height: 300,
-                        ),
-                      ],
+                // The Center widget was removed and Stack now fills the AspectRatio.
+                child: Stack(
+                  alignment: Alignment.center,
+                  // This property makes the Stack's children fill its bounds.
+                  fit: StackFit.expand, 
+                  children: <Widget>[
+                    Image.asset(
+                      'assets/images/cinema_screen.jpg',
+                      // BoxFit.cover will now correctly fill the 16:9 area.
+                      fit: BoxFit.cover,
                     ),
-                  ),
+                    Lottie.asset(
+                      'assets/animation/panda_red.json',
+                      width: 300,
+                      height: 300,
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
+            ),
       ],
     );
   }

@@ -16,7 +16,25 @@ class LocalStorageSettingsPersistence extends SettingsPersistence {
       SharedPreferences.getInstance();
 
   final Logger _log = Logger('LocalStorageSettingsPersistence');
+  static const _completedLevelsKey = 'completedLevels';
+  
+  @override
+  Future<Set<int>> getCompletedLevels() async {
+    final prefs = await instanceFuture;
+    final levelStrings = prefs.getStringList(_completedLevelsKey);
+    if (levelStrings == null) {
+      return {};
+    }
+    return levelStrings.map(int.parse).toSet();
+  }
 
+  @override
+  Future<void> saveCompletedLevels(Set<int> completedLevels) async {
+    final prefs = await instanceFuture;
+    // Convert set of integers to a list of strings to store in SharedPreferences
+    final levelStrings = completedLevels.map((e) => e.toString()).toList();
+    await prefs.setStringList(_completedLevelsKey, levelStrings);
+  }
 
   @override
   Future<bool> getSoundsOn() async {

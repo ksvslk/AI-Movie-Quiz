@@ -9,9 +9,7 @@ import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/data/level_info.dart';
 
 class LevelController extends ChangeNotifier {
-
   final Logger _log = Logger('level_controller.dart');
-
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final SettingsController _settingsController;
@@ -36,97 +34,85 @@ class LevelController extends ChangeNotifier {
   }
 
   void _listenToLevels() {
-  _levelsSubscription = _db
-      .collection('levels')
-      .orderBy('levelNumber')
-      .snapshots()
-      .listen(
-        (snapshot) {
-          _log.log(Level.INFO, "[Debug] Firestore data received. Number of changes: ${snapshot.docChanges.length}");
-          // --- KEY CHANGE IS HERE ---
-          // Instead of rebuilding the whole list from scratch, we process
-          // the individual changes that Firestore tells us about.
-          for (var change in snapshot.docChanges) {
-            switch (change.type) {
-              case DocumentChangeType.added:
-                final newLevel = LevelInfo.fromFirestore(change.doc);
+    _levelsSubscription = _db
+        .collection('levels')
+        .orderBy('levelNumber')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            // --- KEY CHANGE IS HERE ---
+            // Instead of rebuilding the whole list from scratch, we process
+            // the individual changes that Firestore tells us about.
+            for (var change in snapshot.docChanges) {
+              switch (change.type) {
+                case DocumentChangeType.added:
+                  final newLevel = LevelInfo.fromFirestore(change.doc);
 
-                // --- THIS IS THE FIX ---
-                // We only want to treat this as a "special event" if the initial
-                // load of levels is already complete.
-                if (_initialLoadCompleter.isCompleted) {
-                  // This is a TRUE new level that was added while the app was running.
-          _log.log(Level.INFO, "✅ REAL NEW LEVEL ADDED: Level ${newLevel.levelNumber} - '${newLevel.characteristic}'");
+                  // --- THIS IS THE FIX ---
+                  // We only want to treat this as a "special event" if the initial
+                  // load of levels is already complete.
+                  if (_initialLoadCompleter.isCompleted) {
+                    // This is a TRUE new level that was added while the app was running.
+                    lastLevelAdded = newLevel; // Or fire your Stream event here
+                  } else {
+                    // This is just part of the initial data load.
+                  }
 
-                  lastLevelAdded = newLevel; // Or fire your Stream event here
-                } else {
-                  // This is just part of the initial data load.
-                }
-                
-                // IMPORTANT: We always add the level to our local list,
-                // regardless of whether it's an initial load or a new addition.
-                levels.add(newLevel);
-                break;
-                
-              case DocumentChangeType.modified:
-                // (This logic remains the same)
-                final modifiedLevel = LevelInfo.fromFirestore(change.doc);
-          _log.log(Level.INFO, "🔄 LEVEL MODIFIED: Level ${modifiedLevel.levelNumber} - '${modifiedLevel.characteristic}'");
+                  // IMPORTANT: We always add the level to our local list,
+                  // regardless of whether it's an initial load or a new addition.
+                  levels.add(newLevel);
+                  break;
 
-                final index = levels.indexWhere((l) => l.id == modifiedLevel.id);
-                if (index != -1) {
-                  levels[index] = modifiedLevel;
-                }
-                break;
-                
-              case DocumentChangeType.removed:
-                // (This logic remains the same)
-                final removedLevel = LevelInfo.fromFirestore(change.doc);
-          _log.log(Level.INFO, "❌ LEVEL REMOVED: Level ${removedLevel.levelNumber}");
+                case DocumentChangeType.modified:
+                  // (This logic remains the same)
+                  final modifiedLevel = LevelInfo.fromFirestore(change.doc);
+                  final index = levels.indexWhere(
+                    (l) => l.id == modifiedLevel.id,
+                  );
+                  if (index != -1) {
+                    levels[index] = modifiedLevel;
+                  }
+                  break;
 
-                levels.removeWhere((l) => l.id == removedLevel.id);
-                break;
+                case DocumentChangeType.removed:
+                  // (This logic remains the same)
+                  final removedLevel = LevelInfo.fromFirestore(change.doc);
+                  levels.removeWhere((l) => l.id == removedLevel.id);
+                  break;
+              }
             }
-          }
-          
-          levels.sort((a, b) => a.levelNumber.compareTo(b.levelNumber));
 
-          _error = null;
+            levels.sort((a, b) => a.levelNumber.compareTo(b.levelNumber));
 
-          // Your existing logic for completing the completer is perfect.
-          // It runs AFTER the loop above has processed the first batch.
-          if (!_initialLoadCompleter.isCompleted) {
-            _initialLoadCompleter.complete();
-          _log.log(Level.INFO, "[Debug] Initial load complete. UI is now unlocked.");
+            _error = null;
 
-          }
+            // Your existing logic for completing the completer is perfect.
+            // It runs AFTER the loop above has processed the first batch.
+            if (!_initialLoadCompleter.isCompleted) {
+              _initialLoadCompleter.complete();
+            }
 
-          // (The rest of your method remains the same)
-          if (!snapshot.metadata.isFromCache) {
-            if (_processPendingLevel()) {
-               _log.log(Level.INFO, "Should process pending level, not from cache");
+            // (The rest of your method remains the same)
+            if (!snapshot.metadata.isFromCache) {
+              if (_processPendingLevel()) {
+              } else {
+                _findInitialLevel();
+              }
             } else {
-               _log.log(Level.INFO, "_findInitialLevel, process pending level false");
               _findInitialLevel();
             }
-          } else {
-            _findInitialLevel();
-             _log.log(Level.INFO, "snapshot.metadata.isFromCache");
-
-          }
-          
-          notifyListeners();
-        },
-        onError: (e) {
-          _error = "Failed to connect to levels data.";
-           if (!_initialLoadCompleter.isCompleted) {
+            notifyListeners();
+          },
+          onError: (e) {
+            _error = "Failed to connect to levels data.";
+            if (!_initialLoadCompleter.isCompleted) {
               _initialLoadCompleter.completeError(e);
             }
-          notifyListeners();
-        },
-      );
-}
-  
+            notifyListeners();
+          },
+        );
+  }
+
   // --- No other changes are needed in the rest of the file ---
 
   bool _processPendingLevel() {
@@ -146,13 +132,17 @@ class LevelController extends ChangeNotifier {
   void _findInitialLevel() {
     if (levels.isEmpty) return;
     final lastLevelNum = _settingsController.lastPlayedLevelNumber;
-    final index = levels.indexWhere((level) => level.levelNumber == lastLevelNum);
+    final index = levels.indexWhere(
+      (level) => level.levelNumber == lastLevelNum,
+    );
     _currentLevelIndex = (index != -1) ? index : 0;
   }
-  
+
   void selectLevelByNumber(int levelNumber) {
     if (levels.isEmpty) return;
-    final index = levels.indexWhere((level) => level.levelNumber == levelNumber);
+    final index = levels.indexWhere(
+      (level) => level.levelNumber == levelNumber,
+    );
     if (index != -1 && _currentLevelIndex != index) {
       _currentLevelIndex = index;
       notifyListeners();
@@ -160,20 +150,22 @@ class LevelController extends ChangeNotifier {
   }
 
   LevelInfo? advanceFrom(int completedLevelNumber) {
-    final completedIndex = levels.indexWhere((level) => level.levelNumber == completedLevelNumber);
+    final completedIndex = levels.indexWhere(
+      (level) => level.levelNumber == completedLevelNumber,
+    );
 
     // Check if the completed level was found and if a next level exists.
     if (completedIndex != -1 && completedIndex + 1 < levels.length) {
       // IMPORTANT: Update the master state to the new index.
       _currentLevelIndex = completedIndex + 1;
-      
+
       // Notify listeners so other parts of the UI (like the level select screen) are aware.
       notifyListeners();
-      
+
       // Return the data for the new, current level.
       return levels[_currentLevelIndex];
     }
-    
+
     // No next level was found.
     return null;
   }
@@ -181,7 +173,7 @@ class LevelController extends ChangeNotifier {
   Future<void> setupFCMListeners() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission();
-    
+
     RemoteMessage? initialMessage = await messaging.getInitialMessage();
     if (initialMessage != null) {
       _handleNotificationTap(initialMessage);

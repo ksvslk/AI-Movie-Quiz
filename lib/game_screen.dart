@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:lottie/lottie.dart';
 import 'package:operation_sunrise/audio/audio_controller.dart';
-import 'package:operation_sunrise/audio/sounds.dart';
 import 'package:operation_sunrise/change_notifier/ads_controller.dart';
 import 'package:operation_sunrise/change_notifier/game_controller.dart';
 import 'package:operation_sunrise/change_notifier/level_controller.dart';
@@ -210,10 +209,12 @@ class _GameScreenState extends State<GameScreen> {
     super.initState();
     final audioController = context.read<AudioController>();
     final levelController = context.read<LevelController>();
+    final settingsController = context.read<SettingsController>();
     levelController.addListener(_onNewLevelAdded);
     _gameController = GameController(
       levelInfo: widget.levelInfo,
       audioController: audioController,
+      settingsController: settingsController,
     );
     _gameController.addListener(_onGameControllerUpdate);
   }
@@ -226,10 +227,12 @@ class _GameScreenState extends State<GameScreen> {
       _gameController.removeListener(_onGameControllerUpdate);
       _gameController.dispose();
       final audioController = context.read<AudioController>();
+      final settingsController = context.read<SettingsController>();
 
       _gameController = GameController(
         levelInfo: widget.levelInfo,
         audioController: audioController,
+        settingsController: settingsController,
       );
       _gameController.addListener(_onGameControllerUpdate);
 
@@ -284,7 +287,7 @@ class _GameScreenState extends State<GameScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Hint unavailable. Try again later or avoid interruptiongs with Premium.',
+            'Hint unavailable. Try again later or avoid interruptions with Premium.',
           ),
           duration: Duration(seconds: 4),
         ),
@@ -303,75 +306,104 @@ class _GameScreenState extends State<GameScreen> {
         body: SafeArea(
           child: Consumer<GameController>(
             builder: (context, controller, child) {
-              return Column(
+              // 1. Wrap the existing Column in a Stack to layer widgets
+              return Stack(
                 children: [
-                  Expanded(
-                    flex: 4,
-                    child: LevelVideoPlayer(
-                      videoPath: widget.levelInfo.path,
-                      isSolved: controller.isSolved,
-                    ),
-                  ),
-                  _buildSolutionField(context, controller),
-                  Expanded(
-                    flex: 5,
-                    child: Container(
-                      color: Colors.black,
-                      padding: const EdgeInsets.all(16.0),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final size = min(
-                            constraints.maxWidth,
-                            constraints.maxHeight,
-                          );
+                  // This Column is your existing game layout
+                  Column(
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: LevelVideoPlayer(
+                          videoPath: widget.levelInfo.path,
+                          isSolved: controller.isSolved,
+                        ),
+                      ),
+                      _buildSolutionField(context, controller),
+                      Expanded(
+                        flex: 5,
+                        child: Container(
+                          color: Colors.black,
+                          padding: const EdgeInsets.all(16.0),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final size = min(
+                                constraints.maxWidth,
+                                constraints.maxHeight,
+                              );
 
-                          return AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 500),
-                            switchInCurve: Curves.easeInOut,
-                            switchOutCurve: Curves.easeInOut,
-                            transitionBuilder:
-                                (Widget child, Animation<double> animation) {
-                                  // Simple fade transition
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: child,
-                                  );
-                                },
-                            child: controller.isSolved
-                                ? Center(
-                                    key: const ValueKey('solved'),
-                                    child: GestureDetector(
-                                      onTap: _goToNextLevel,
-                                      child: SizedBox(
-                                        width: size,
-                                        height: size,
-                                        child: Lottie.asset(
-                                          'assets/animation/star.json',
-                                          repeat: false,
+                              return AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 500),
+                                switchInCurve: Curves.easeInOut,
+                                switchOutCurve: Curves.easeInOut,
+                                transitionBuilder:
+                                    (
+                                      Widget child,
+                                      Animation<double> animation,
+                                    ) {
+                                      return FadeTransition(
+                                        opacity: animation,
+                                        child: child,
+                                      );
+                                    },
+                                child: controller.isSolved
+                                    ? Center(
+                                        key: const ValueKey('solved'),
+                                        child: GestureDetector(
+                                          onTap: _goToNextLevel,
+                                          child: SizedBox(
+                                            width: size,
+                                            height: size,
+                                            child: Lottie.asset(
+                                              'assets/animation/star.json',
+                                              repeat: false,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : Center(
+                                        key: const ValueKey('unsolved'),
+                                        child: ConcentricLetterCircle(
+                                          onLetterTapped:
+                                              controller.onLetterTapped,
+                                          onBackspaceTapped:
+                                              controller.onBackspaceTapped,
+                                          onClearAllTapped:
+                                              controller.onClearAllTapped,
+                                          onSymbolsTapped: () =>
+                                              _onHintTapped(0),
+                                          onShiftTapped: () => _onHintTapped(1),
+                                          onSpaceTapped: () => _onHintTapped(2),
+                                          onHintTapped: () {},
+                                          solutionString:
+                                              controller.displaySolution,
+                                          currentUserInput: controller.userInput
+                                              .toString(),
                                         ),
                                       ),
-                                    ),
-                                  )
-                                : Center(
-                                    key: const ValueKey('unsolved'),
-                                    child: ConcentricLetterCircle(
-                                      onLetterTapped: controller.onLetterTapped,
-                                      onBackspaceTapped:
-                                          controller.onBackspaceTapped,
-                                      onClearAllTapped:
-                                          controller.onClearAllTapped,
-                                      onSymbolsTapped: () => _onHintTapped(0),
-                                      onShiftTapped: () => _onHintTapped(1),
-                                      onSpaceTapped: () => _onHintTapped(2),
-                                      onHintTapped: () {},
-                                      solutionString:
-                                          controller.displaySolution,
-                                      currentUserInput: controller.userInput
-                                          .toString(),
-                                    ),
-                                  ),
-                          );
-                        },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 2. Add a Positioned widget to place the level number
+                  Positioned(
+                    left: 16.0,
+                    bottom: 16.0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0,
+                        vertical: 8.0,
+                      ),
+                      child: Text(
+                        '${widget.levelInfo.levelNumber}', // Display the level number
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 16.0,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -458,7 +490,7 @@ class _GameScreenState extends State<GameScreen> {
     }
     return Padding(
       padding: const EdgeInsets.symmetric(
-        vertical: 4.0,
+        vertical: 16.0,
         horizontal: horizontalPadding,
       ),
       child: Column(

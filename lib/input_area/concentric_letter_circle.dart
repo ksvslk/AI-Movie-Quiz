@@ -700,26 +700,6 @@ class _ArcButtonControllerState extends State<ArcButtonController>
     _lastRevealedState = currentRevealedState;
   }
 
-  // *** NEW METHOD START ***
-  /// Automatically reveals all hints if the user is subscribed.
-  /// This is a state-driven action, checked on every build.
-  void _revealAllHintsIfSubscribed(GameController game, MoneyController money) {
-    if (!mounted) return;
-
-    // If the user is subscribed, iterate through all hints.
-    if (money.isSubscribed()) {
-      for (int i = 0; i < game.availableHints.length; i++) {
-        // If a hint is not yet revealed, reveal it.
-        if (!game.availableHints[i].isRevealed) {
-          // This call will notify listeners of the GameController, causing a
-          // rebuild and ensuring this logic doesn't run again for this hint.
-          game.revealHintByIndex(i, playSound: false);
-        }
-      }
-    }
-  }
-  // *** NEW METHOD END ***
-
   void _handleTapDown(
     TapDownDetails details,
     MoneyController money,
@@ -763,10 +743,8 @@ class _ArcButtonControllerState extends State<ArcButtonController>
 
     if (hintIndex != -1 && hintIndex < game.availableHints.length) {
       final hint = game.availableHints[hintIndex];
-      // Note: With the new automatic reveal logic, if money.isSubscribed() is true,
-      // hint.isRevealed will also be true after the next build.
-      // So this logic correctly handles showing popups for already revealed hints.
-      if (hint.isRevealed || money.isSubscribed()) {
+      // If hint is already revealed, show a popup for long quotes.
+      if (hint.isRevealed) {
         if (hint.value.length > longHintThreshold) {
           HapticFeedback.mediumImpact();
           showDialog(
@@ -781,13 +759,29 @@ class _ArcButtonControllerState extends State<ArcButtonController>
         }
         return;
       }
- 
+      
+      // *** NEW LOGIC: If hint is NOT revealed, check for subscription ***
+      if (money.isSubscribed()) {
+        // User is subscribed, so reveal the hint for free.
+        HapticFeedback.lightImpact();
+        game.revealHintByIndex(hintIndex, playSound: true);
+        
+        // Trigger the tap feedback animation.
+        setState(() {
+          _tappedArc = tappedArc;
+          _tapPosition = details.localPosition;
+        });
+        _animationController.forward(from: 0.0);
+        return; // Action is complete.
+      }
+      // If not subscribed, the logic will fall through to the switch statement below.
     }
 
     if (_animationController.isAnimating) return;
 
     VoidCallback action;
     switch (tappedArc) {
+      // These cases are now only for non-subscribers for hint buttons.
       case _TappedArc.symbols:
         action = widget.onSymbolsTapped;
         break;
@@ -798,8 +792,7 @@ class _ArcButtonControllerState extends State<ArcButtonController>
         action = widget.onSpaceTapped;
         break;
       case _TappedArc.hint:
-        // If subscribed, the hints are revealed automatically.
-        // The button becomes a status indicator, so tapping does nothing.
+        // This is the premium button itself
         action = money.isSubscribed()
             ? () {}
             : money.purchaseSubscription;
@@ -824,11 +817,8 @@ class _ArcButtonControllerState extends State<ArcButtonController>
     final game = context.watch<GameController>();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // This remains to trigger the glow animation *after* a hint is revealed.
       _checkForHintReveals(game);
-      // *** MODIFIED LOGIC START ***
-      // On every build, check if the user is subscribed and reveal hints accordingly.
-      _revealAllHintsIfSubscribed(game, money);
-      // *** MODIFIED LOGIC END ***
     });
 
     return GestureDetector(
@@ -922,6 +912,7 @@ class _ArcPainter extends CustomPainter {
     List<Map<String, dynamic>> arcSections = [];
     const int longHintThreshold = 22;
 
+    final isSubscribed = moneyController.isSubscribed();
     final availableHints = gameController.availableHints;
     for (int i = 0; i < hintArcProperties.length; i++) {
       if (i < availableHints.length) {
@@ -939,18 +930,18 @@ class _ArcPainter extends CustomPainter {
                 : highlightRed,
           });
         } else {
+          // *** MODIFIED LOGIC: Change subtitle and color based on subscription ***
           arcSections.add({
             ...hintArcProperties[i],
             'text': hint.label.toUpperCase(),
-            'subtitle': 'Watch Ad',
-            'baseColor': baseRed,
-            'highlightColor': highlightRed,
+            'subtitle': isSubscribed ? 'REVEAL NOW' : 'Watch Ad',
+            'baseColor': isSubscribed ? Color.fromARGB(255, 45, 0, 71) : baseRed,
+            'highlightColor': isSubscribed ? Color.fromARGB(255, 98, 37, 134) : highlightRed,
           });
         }
       }
     }
-
-    final isSubscribed = moneyController.isSubscribed();
+    
     final productInfo = moneyController.getProductFriendlyInfo();
     final productDescription = moneyController.getDescriptionOfProduct();
     arcSections.add({
@@ -1081,32 +1072,24 @@ class _ArcPainter extends CustomPainter {
     }
 
     // --- 2. Determine Final Font Size ---
-    // This is the corrected logic.
     TextStyle effectiveStyle = style;
-    // This factor controls the padding. Lower value = more padding.
     const double arcTextPaddingFactor = 0.85; 
 
-    // Calculate the target angle, which is the available space minus padding.
     final double targetAngle = sweepAngle * arcTextPaddingFactor;
 
-    // If the text's angle is larger than our target, we MUST scale it down.
-    // Otherwise, we use the original size (scale factor of 1.0).
-    // This prevents short text like "OK" from being stretched to fill the arc.
     if (initialTotalAngle > targetAngle && style.fontSize != null) {
       final double scaleFactor = targetAngle / initialTotalAngle;
       effectiveStyle = style.copyWith(fontSize: style.fontSize! * scaleFactor);
     }
-    // *** END OF CORRECTED LOGIC ***
 
     // --- 3. Drawing Pass ---
-    // Now, build the final painters and draw the text using the effective style.
     final String effectiveText = isUpsideDown
         ? text.split('').reversed.join('')
         : text;
     double finalTotalAngle = 0;
     final List<TextPainter> charPainters = [];
 
-    // We must re-measure with the new font size to correctly center the text.
+    // Re-measure with the new font size to correctly center the text.
     for (int i = 0; i < effectiveText.length; i++) {
       final painter = TextPainter(
         text: TextSpan(text: effectiveText[i], style: effectiveStyle),

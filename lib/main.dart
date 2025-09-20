@@ -81,13 +81,15 @@ Future<void> setUpRemoteConfig() async {
   await remoteConfig.setConfigSettings(
     RemoteConfigSettings(
       fetchTimeout: const Duration(minutes: 1),
-      minimumFetchInterval: const Duration(minutes: 1),
+      minimumFetchInterval: const Duration(hours: 6),
     ),
   );
   await remoteConfig.setDefaults(const {
-    C.minutesBeforeFirstAd: 5,
+    C.dayBeforeFasterAds: 1,
     C.dayBeforeReviewTag: 1,
+    C.minutesBeforeFirstAd: 5,
     C.minutesBeforeReviewTag: 15,
+    C.testAdsTag: false,
     C.premiumInfoText: "All hints + no ads",
   });
   remoteConfig.onConfigUpdated.listen((event) async {

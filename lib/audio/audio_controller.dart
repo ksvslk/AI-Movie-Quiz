@@ -67,8 +67,15 @@ class AudioController {
     // Start the listener for real-time system volume changes.
     await _initRingerModeListener();
 
+    await _loadAllSfx();
+  }
+
+  Future<void> _loadAllSfx() async {
+    // Clear any old, invalid sound sources before loading.
+    _sfxs.clear();
+    _log.info('Loading all sound effects...');
     try {
-      // Load all sounds into the map
+      // Paste all your _loadSfx calls here
       await _loadSfx(SfxType.letter, 'assets/sfx/letter.wav');
       await _loadSfx(SfxType.select, 'assets/sfx/select.wav');
       await _loadSfx(SfxType.erase, 'assets/sfx/erase.wav');
@@ -76,8 +83,6 @@ class AudioController {
       await _loadSfx(SfxType.reveal, 'assets/sfx/reveal.wav');
       await _loadSfx(SfxType.snapclick, 'assets/sfx/snapclick.wav');
       await _loadSfx(SfxType.impact, 'assets/sfx/impact.wav');
-
-      // Preload the 'won' sounds
       await _loadSfx(SfxType.action, 'assets/sfx/won/action.wav');
       await _loadSfx(SfxType.adventure, 'assets/sfx/won/adventure.wav');
       await _loadSfx(SfxType.comedy, 'assets/sfx/won/comedy.wav');
@@ -126,39 +131,53 @@ class AudioController {
 
   /// Plays a sound effect of the given [type].
   void playSfx(SfxType type) async {
-    // Check the notifier's current value synchronously.
-    if (isMutedNotifier.value || _lifecycleNotifier!.value == AppLifecycleState.inactive) {
-      return;
-    }
-
-    // Check app setting.
+    // --- ADD THIS WHOLE DEBUG BLOCK --- 👇
+    _log.info('--- Attempting to play sound: $type ---');
     final soundsOn = _settings?.soundsOn.value ?? false;
-    if (!soundsOn) {
+    _log.info('Is system muted? ${isMutedNotifier.value}');
+    _log.info('Are sounds on in settings? $soundsOn');
+    _log.info('Is SoLoud engine initialized? ${SoLoud.instance.isInitialized}');
+    // ------------------------------------
+
+    if (isMutedNotifier.value || !soundsOn || !SoLoud.instance.isInitialized) {
+      _log.warning('🛑 Playback stopped by a guard condition.');
       return;
     }
-
-    // Find the preloaded sound and play it.
     final sound = _sfxs[type];
     if (sound != null) {
-      final handle = await SoLoud.instance.play(sound);
-      _activeSounds.add(handle);
+      try {
+        final handle = await SoLoud.instance.play(sound);
+        _activeSounds.add(handle);
+      } catch (e) {
+        _log.severe('Error playing sound $type: $e');
+      }
     } else {
       _log.warning('Tried to play sound $type, but it was not preloaded.');
     }
   }
 
-  void _handleAppLifecycle() {
+  void _handleAppLifecycle() async {
+    // ADD THIS LOG 👇
+    _log.info('App lifecycle changed to: ${_lifecycleNotifier!.value}');
+
     switch (_lifecycleNotifier!.value) {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
-      case AppLifecycleState.inactive: // Mute when app is interrupted
-        _stopAllSound();
-        isMutedNotifier.value = true;
+      case AppLifecycleState.inactive:
+        if (SoLoud.instance.isInitialized) {
+          _log.info('Engine is ON, turning it OFF.');
+          SoLoud.instance.deinit();
+        }
         break;
       case AppLifecycleState.resumed:
-        // Unmute when app becomes active again.
-        isMutedNotifier.value = false;
+        if (!SoLoud.instance.isInitialized) {
+          _log.info('Engine is OFF, turning it ON.');
+          await SoLoud.instance.init();
+          // RELOAD ALL SOUNDS for the new engine instance.
+          // THIS IS THE KEY!
+          await _loadAllSfx();
+        }
         break;
     }
   }
@@ -171,9 +190,15 @@ class AudioController {
   }
 
   void _stopAllSound() {
-    for (final handle in _activeSounds) {
-      SoLoud.instance.stop(handle);
+// First, check if the engine is actually running.
+    if (SoLoud.instance.isInitialized) {
+      // If it is, stop all active sounds.
+      for (final handle in _activeSounds) {
+        SoLoud.instance.stop(handle);
+      }
     }
+    // ALWAYS clear the list of handles. If the engine was off,
+    // these handles are invalid anyway.
     _activeSounds.clear();
   }
 }

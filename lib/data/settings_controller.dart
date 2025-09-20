@@ -20,6 +20,11 @@ class SettingsController with ChangeNotifier {
   DateTime? _timeOfPause;
   static const _sessionTimeout = Duration(seconds: 200);
 
+  Set<int> _completedLevels = {};
+  Set<int> get completedLevels => _completedLevels;
+  bool isLevelCompleted(int levelNumber) =>
+      _completedLevels.contains(levelNumber);
+
   // This variable now ONLY exists in memory.
   DateTime? sessionStartTime;
 
@@ -36,32 +41,17 @@ class SettingsController with ChangeNotifier {
     final now = DateTime.now().toUtc();
     int minutes;
 
-    _log.log(
-      Level.INFO,
-      "⏰ appInstallTime: Level ${appInstallTime?.toIso8601String()}",
-    );
-    _log.log(
-      Level.INFO,
-      "⏱️ sessionStartTime: Level ${sessionStartTime?.toIso8601String()}",
-    );
-
     if (appInstallTime != null) {
       final days = FirebaseRemoteConfig.instance.getInt(C.dayBeforeFasterAds);
       if (now.difference(appInstallTime).inDays < days) {
         minutes = FirebaseRemoteConfig.instance.getInt(C.minutesBeforeFirstAd);
-        _log.log(Level.INFO, "now < appInstallTime, so minutes are $minutes");
       } else {
         minutes = FirebaseRemoteConfig.instance.getInt(
           C.minutesBeforeFasterAds,
         );
-        _log.log(Level.INFO, "now >= appInstallTime, so minutes are $minutes");
       }
       if (sessionStartTime != null) {
         if (now.difference(sessionStartTime!).inMinutes >= minutes) {
-          _log.log(
-            Level.INFO,
-            "now >= sessionStartTime, so we SHOULD SHOW ADS!",
-          );
           return true;
         }
       }
@@ -69,38 +59,30 @@ class SettingsController with ChangeNotifier {
     return false;
   }
 
-void _onAppLifecycleStateChanged() {
-  final state = _lifecycleNotifier?.value;
-  _log.log(Level.INFO, "AppLifecycleState: $state");
+  void _onAppLifecycleStateChanged() {
+    final state = _lifecycleNotifier?.value;
 
-  switch (state) {
-    case AppLifecycleState.paused:
-    case AppLifecycleState.inactive:
-    case AppLifecycleState.hidden:
-    case AppLifecycleState.detached:
-      _timeOfPause = DateTime.now().toUtc();
-      _log.log(Level.INFO, "App paused at: ${_timeOfPause!.toIso8601String()}");
-      break;
-    case AppLifecycleState.resumed:
-      final now = DateTime.now().toUtc();
-      final timeOfPause = _timeOfPause;
-      _log.log(Level.INFO, "timeOfPause: $timeOfPause");
-      
-      // Only update session time if we have a valid pause time AND the timeout exceeded
-      if (timeOfPause != null && now.difference(timeOfPause) > _sessionTimeout) {
-        // Update the in-memory variable directly.
-        sessionStartTime = now;
-        _log.log(Level.INFO, "Session timeout exceeded. New session started at: ${sessionStartTime!.toIso8601String()}");
-      } else if (timeOfPause != null) {
-        _log.log(Level.INFO, "Session continues (pause was ${now.difference(timeOfPause).inSeconds}s, timeout is ${_sessionTimeout.inSeconds}s)");
-      } else {
-        _log.log(Level.INFO, "App resumed without tracked pause. Continuing existing session started at: ${sessionStartTime?.toIso8601String()}");
-      }
-      break;
-    case null:
-      break;
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        _timeOfPause = DateTime.now().toUtc();
+        break;
+      case AppLifecycleState.resumed:
+        final now = DateTime.now().toUtc();
+        final timeOfPause = _timeOfPause;
+        // Only update session time if we have a valid pause time AND the timeout exceeded
+        if (timeOfPause != null &&
+            now.difference(timeOfPause) > _sessionTimeout) {
+          // Update the in-memory variable directly.
+          sessionStartTime = now;
+        }
+        break;
+      case null:
+        break;
+    }
   }
-}
 
   void attachLifecycleNotifier(ValueNotifier<AppLifecycleState> notifier) {
     _lifecycleNotifier?.removeListener(_onAppLifecycleStateChanged);
@@ -109,13 +91,7 @@ void _onAppLifecycleStateChanged() {
   }
 
   Future<void> loadStateFromPersistence() async {
-    if (sessionStartTime == null) {
-      sessionStartTime = DateTime.now().toUtc();
-      _log.log(
-        Level.INFO,
-        "Initial sessionStartTime set: ${sessionStartTime!.toIso8601String()}",
-      );
-    }
+    sessionStartTime ??= DateTime.now().toUtc();
     await Future.wait([
       _persistence.getSoundsOn().then((value) => soundsOn.value = value),
       _persistence.getAutoplayOn().then((value) => autoplayOn.value = value),
@@ -123,6 +99,9 @@ void _onAppLifecycleStateChanged() {
       _persistence.getEulaAccepted().then((value) => isEulaAccepted = value),
       _persistence.getLastPlayedLevel().then(
         (value) => _lastPlayedLevelNumber = value,
+      ),
+      _persistence.getCompletedLevels().then(
+        (value) => _completedLevels = value,
       ),
     ]);
     saveAppInstallTime();
@@ -133,6 +112,15 @@ void _onAppLifecycleStateChanged() {
     if (_lastPlayedLevelNumber != levelNumber) {
       _lastPlayedLevelNumber = levelNumber;
       await _persistence.saveLastPlayedLevel(levelNumber);
+      notifyListeners();
+    }
+  }
+
+  Future<void> markLevelAsCompleted(int levelNumber) async {
+    // .add() returns true if the number was not already in the set.
+    // This prevents unnecessary saves and notifications.
+    if (_completedLevels.add(levelNumber)) {
+      await _persistence.saveCompletedLevels(_completedLevels);
       notifyListeners();
     }
   }

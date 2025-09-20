@@ -13,7 +13,7 @@ class MenuDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.read<SettingsController>();
+    final settings = context.watch<SettingsController>();
     final levelController = context.watch<LevelController>();
 
     // Define a dark theme specifically for the drawer
@@ -150,29 +150,52 @@ class MenuDrawer extends StatelessWidget {
               // Instead of the for loop, you would need to use a different widget.
               // The easiest way is to wrap the level list in its own widget like a SizedBox or Expanded.
               SizedBox(
-                // You might need to give this a specific height or wrap it in a way
-                // that it doesn't try to take infinite height inside the main ListView.
-                // For a drawer, this can be tricky. A more robust solution might involve Slivers.
-                // But for demonstration, let's assume we can constrain it.
                 height: 300, // Example fixed height
                 child: ListView.builder(
-                  shrinkWrap: true, // Often needed when nesting scrollables
+                  shrinkWrap: true,
                   itemCount: levelController.levels.length,
                   itemBuilder: (context, index) {
                     final level = levelController.levels[index];
+                    final isCompleted = settings.isLevelCompleted(
+                      level.levelNumber,
+                    );
                     return ListTile(
                       dense: true,
-                      leading: CircleAvatar(
-                        radius: 15,
-                        backgroundColor: Theme.of(context).primaryColor,
-                        child: Text(
-                          level.levelNumber.toString(),
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: "EpundaSlab",
+                      leading: Stack(
+                        clipBehavior: Clip
+                            .none, // Allows the icon to render outside the stack's bounds
+                        alignment: Alignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 15,
+                            backgroundColor: Theme.of(context).primaryColor,
+                            child: Text(
+                              level.levelNumber.toString(),
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: "EpundaSlab",
+                              ),
+                            ),
                           ),
-                        ),
+                          if (isCompleted)
+                            Positioned(
+  top: -4,
+  right: -4,
+  child: Container(
+    padding: const EdgeInsets.all(2), // Optional space around the icon
+    decoration: const BoxDecoration(
+      color: Colors.green, // Your background color
+      shape: BoxShape.circle, // This makes it a circle
+    ),
+    child: const Icon(
+      Icons.check, // Using a simple check as the circle is now the background
+      color: Colors.white, // Color for the icon itself
+      size: 10,
+    ),
+  ),
+),
+                        ],
                       ),
                       title: Text(level.characteristic),
                       selected:

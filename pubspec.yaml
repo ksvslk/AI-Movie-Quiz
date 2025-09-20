@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+10
+version: 1.0.0+17
 
 environment:
   sdk: ^3.9.2
@@ -80,24 +80,23 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/images/icon.png"
+  image_path: "assets/images/icon_1024_best.png"
   min_sdk_android: 21 # android min sdk min:16, default 21
+  remove_alpha_ios: true
+  adaptive_icon_foreground: "assets/images/icon_1024_best.png"
+  adaptive_icon_background: "assets/images/icon_mono.png"
+  adaptive_icon_foreground_inset: 21
 
 flutter_native_splash:
   color: "#000000"
-  image: assets/images/icon_launcher.png
-  branding: assets/images/icon_launcher.png
-  branding_bottom_padding: 24
+  image: assets/images/icon_splash.png
   color_dark: "#000000"
-  image_dark: assets/images/icon_launcher.png
-  branding_dark: assets/images/icon_launcher.png
-
+  image_dark: assets/images/icon_splash.png
   android_12:
-    image: assets/images/icon_launcher.png
+    image: assets/images/icon_splash.png
     icon_background_color: "#000000"
-    image_dark: assets/images/icon_launcher.png
+    image_dark: assets/images/icon_splash.png
     icon_background_color_dark: "#000000"
-
   web: false
 
 # The following section is specific to Flutter packages.
