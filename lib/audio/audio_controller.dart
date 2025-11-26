@@ -73,7 +73,6 @@ class AudioController {
   Future<void> _loadAllSfx() async {
     // Clear any old, invalid sound sources before loading.
     _sfxs.clear();
-    _log.info('Loading all sound effects...');
     try {
       // Paste all your _loadSfx calls here
       await _loadSfx(SfxType.letter, 'assets/sfx/letter.wav');
@@ -131,16 +130,11 @@ class AudioController {
 
   /// Plays a sound effect of the given [type].
   void playSfx(SfxType type) async {
-    // --- ADD THIS WHOLE DEBUG BLOCK --- 👇
-    _log.info('--- Attempting to play sound: $type ---');
+
     final soundsOn = _settings?.soundsOn.value ?? false;
-    _log.info('Is system muted? ${isMutedNotifier.value}');
-    _log.info('Are sounds on in settings? $soundsOn');
-    _log.info('Is SoLoud engine initialized? ${SoLoud.instance.isInitialized}');
     // ------------------------------------
 
     if (isMutedNotifier.value || !soundsOn || !SoLoud.instance.isInitialized) {
-      _log.warning('🛑 Playback stopped by a guard condition.');
       return;
     }
     final sound = _sfxs[type];
@@ -157,8 +151,6 @@ class AudioController {
   }
 
   void _handleAppLifecycle() async {
-    // ADD THIS LOG 👇
-    _log.info('App lifecycle changed to: ${_lifecycleNotifier!.value}');
 
     switch (_lifecycleNotifier!.value) {
       case AppLifecycleState.paused:
@@ -166,16 +158,12 @@ class AudioController {
       case AppLifecycleState.hidden:
       case AppLifecycleState.inactive:
         if (SoLoud.instance.isInitialized) {
-          _log.info('Engine is ON, turning it OFF.');
           SoLoud.instance.deinit();
         }
         break;
       case AppLifecycleState.resumed:
         if (!SoLoud.instance.isInitialized) {
-          _log.info('Engine is OFF, turning it ON.');
           await SoLoud.instance.init();
-          // RELOAD ALL SOUNDS for the new engine instance.
-          // THIS IS THE KEY!
           await _loadAllSfx();
         }
         break;

@@ -44,7 +44,6 @@ class _AppLifecycleObserverState extends State<AppLifecycleObserver>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _log.info(() => 'didChangeAppLifecycleState: $state');
     lifecycleListenable.value = state;
   }
 
@@ -58,6 +57,5 @@ class _AppLifecycleObserverState extends State<AppLifecycleObserver>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _log.info('Subscribed to app lifecycle updates');
   }
 }

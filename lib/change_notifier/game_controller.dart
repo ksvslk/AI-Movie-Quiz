@@ -1,5 +1,6 @@
 // game_controller.dart
 
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/material.dart';
 import 'package:operation_sunrise/audio/audio_controller.dart';
 import 'package:operation_sunrise/audio/sounds.dart';
@@ -17,6 +18,7 @@ class GameController extends ChangeNotifier {
   late final int puzzleLength;
 
   bool _isSolved = false;
+  DateTime? _levelStartTime;
 
   List<Hint> availableHints = [];
 
@@ -24,6 +26,7 @@ class GameController extends ChangeNotifier {
     : displaySolution = levelInfo.name {
     puzzleLength = displaySolution.replaceAll(' ', '').length;
     _initializeHints();
+    _trackLevelStart();
   }
 
   void _initializeHints() {
@@ -35,6 +38,11 @@ class GameController extends ChangeNotifier {
         ),
       );
     });
+  }
+
+  Future<void> _trackLevelStart() async {
+    _levelStartTime = DateTime.now();
+    await trackLevelBegin(levelInfo.levelNumber);
   }
 
   List<String> get userInput => _userInput;
@@ -77,10 +85,23 @@ class GameController extends ChangeNotifier {
 
       if (userInputString.toLowerCase() == solutionString.toLowerCase()) {
         settingsController.markLevelAsCompleted(levelInfo.levelNumber);
+        _trackLevelComplete();
         playWinSound();
         _isSolved = true;
       }
     }
+  }
+
+  Future<void> _trackLevelComplete() async {
+    int timeTakenSeconds = 0;
+    if (_levelStartTime != null) {
+      timeTakenSeconds = DateTime.now().difference(_levelStartTime!).inSeconds;
+    }
+    
+    await trackLevelFinish(
+      levelInfo.levelNumber, 
+      timeTakenSeconds
+    );
   }
 
   void playWinSound() {
@@ -109,4 +130,26 @@ class GameController extends ChangeNotifier {
       audioController.playSfx(SfxType.war);
     }
   }
+
+  Future<void> trackLevelBegin(int? levelNumber) async {
+    if (levelNumber == null) return;
+    await FirebaseAnalytics.instance.logEvent(
+      name: 'level_begin',
+      parameters: {
+        'level_number': levelNumber,
+      },
+    );
+  }
+
+  Future<void> trackLevelFinish(int? levelNumber, int timeTaken) async {
+    if (levelNumber == null) return;
+    await FirebaseAnalytics.instance.logEvent(
+      name: 'level_finish',
+      parameters: {
+        'level_number': levelNumber,
+        'time_taken': timeTaken,
+      },
+    );
+  }
+  
 }

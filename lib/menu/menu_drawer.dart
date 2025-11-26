@@ -8,8 +8,58 @@ import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/menu/info_display.dart';
 import 'package:provider/provider.dart';
 
-class MenuDrawer extends StatelessWidget {
+class MenuDrawer extends StatefulWidget {
   const MenuDrawer({super.key});
+
+  @override
+  State<MenuDrawer> createState() => _MenuDrawerState();
+}
+
+class _MenuDrawerState extends State<MenuDrawer> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Schedule the scroll to happen after the widget is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToSelectedLevel();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToSelectedLevel() {
+    final levelController = context.read<LevelController>();
+    if (levelController.currentLevel != null) {
+      // Find the index of the current level
+      final currentLevelIndex = levelController.levels.indexWhere(
+        (level) => level.levelNumber == levelController.currentLevel!.levelNumber,
+      );
+      
+      if (currentLevelIndex != -1 && _scrollController.hasClients) {
+        // Calculate the position to scroll to
+        // Assuming each ListTile has approximately 56 pixels height (default dense ListTile)
+        const itemHeight = 56.0;
+        final targetOffset = currentLevelIndex * itemHeight;
+        
+        // Get the viewport height to center the item
+        final viewportHeight = _scrollController.position.viewportDimension;
+        final centeredOffset = targetOffset - (viewportHeight / 2) + (itemHeight / 2);
+        
+        // Ensure we don't scroll beyond the bounds
+        final maxScrollExtent = _scrollController.position.maxScrollExtent;
+        final finalOffset = centeredOffset.clamp(0.0, maxScrollExtent);
+        _scrollController.jumpTo(
+          finalOffset,
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -146,12 +196,10 @@ class MenuDrawer extends StatelessWidget {
                   ),
                 ),
               ),
-              // The code from here is what you should change.
-              // Instead of the for loop, you would need to use a different widget.
-              // The easiest way is to wrap the level list in its own widget like a SizedBox or Expanded.
               SizedBox(
                 height: 300, // Example fixed height
                 child: ListView.builder(
+                  controller: _scrollController, // Add the scroll controller here
                   shrinkWrap: true,
                   itemCount: levelController.levels.length,
                   itemBuilder: (context, index) {
@@ -180,21 +228,26 @@ class MenuDrawer extends StatelessWidget {
                           ),
                           if (isCompleted)
                             Positioned(
-  top: -4,
-  right: -4,
-  child: Container(
-    padding: const EdgeInsets.all(2), // Optional space around the icon
-    decoration: const BoxDecoration(
-      color: Colors.green, // Your background color
-      shape: BoxShape.circle, // This makes it a circle
-    ),
-    child: const Icon(
-      Icons.check, // Using a simple check as the circle is now the background
-      color: Colors.white, // Color for the icon itself
-      size: 10,
-    ),
-  ),
-),
+                              top: -4,
+                              right: -4,
+                              child: Container(
+                                padding: const EdgeInsets.all(
+                                  2,
+                                ), // Optional space around the icon
+                                decoration: const BoxDecoration(
+                                  color: Colors.green, // Your background color
+                                  shape:
+                                      BoxShape.circle, // This makes it a circle
+                                ),
+                                child: const Icon(
+                                  Icons
+                                      .check, // Using a simple check as the circle is now the background
+                                  color:
+                                      Colors.white, // Color for the icon itself
+                                  size: 10,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                       title: Text(level.characteristic),

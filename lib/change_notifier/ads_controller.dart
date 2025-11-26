@@ -5,14 +5,15 @@
 import 'dart:async'; // Import the async library for Timer
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:logging/logging.dart';
 import 'package:operation_sunrise/constants.dart';
+import 'package:operation_sunrise/globals.dart'; // >>> ADDED: Import your global notifier
 
 /// Allows showing ads. A facade for `package:google_mobile_ads`.
 class AdsController extends ChangeNotifier {
@@ -52,9 +53,9 @@ class AdsController extends ChangeNotifier {
       FirebaseRemoteConfig.instance.getBool(C.testAdsTag)
       ? (defaultTargetPlatform == TargetPlatform.android
             // Android
-            ? 'ca-app-pub-3940256099942544/5224354917'
+            ? 'ca-app-pub-3940256099942544/1033173712'
             // iOS
-            : 'ca-app-pub-3940256099942544/1712485313')
+            : 'ca-app-pub-3940256099942544/4411468910')
       : (defaultTargetPlatform == TargetPlatform.android
             // Android
             ? ('ca-app-pub-5386053272091445/7323544832')
@@ -182,14 +183,17 @@ class AdsController extends ChangeNotifier {
     }
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
+        isAdShowingNotifier.value = false; // <<< ADDED: Signal that ad has closed
         reloadInterstitialAd();
       },
       onAdFailedToShowFullScreenContent: (ad, err) {
+        isAdShowingNotifier.value = false; // <<< ADDED: Signal that ad has closed
         reloadInterstitialAd();
       },
     );
 
     if (Platform.isAndroid) _interstitialAd!.setImmersiveMode(true);
+    isAdShowingNotifier.value = true; // >>> ADDED: Signal that ad is about to show
     _interstitialAd!.show();
     _interstitialAd = null;
   }
@@ -203,14 +207,17 @@ class AdsController extends ChangeNotifier {
     }
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
+        isAdShowingNotifier.value = false; // <<< ADDED: Signal that ad has closed
         reloadRewardedAd();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
+        isAdShowingNotifier.value = false; // <<< ADDED: Signal that ad has closed
         reloadRewardedAd();
       },
     );
 
     if (Platform.isAndroid) _rewardedAd!.setImmersiveMode(true);
+    isAdShowingNotifier.value = true; // >>> ADDED: Signal that ad is about to show
     _rewardedAd!.show(
       onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
         onReward();
@@ -271,6 +278,8 @@ class AdsController extends ChangeNotifier {
       },
     );
   }
+
+  
 
   /// Attaches a listener to the app's lifecycle to check for ATT changes on iOS.
   void attachLifecycleNotifier(

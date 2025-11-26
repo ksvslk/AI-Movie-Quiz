@@ -1,13 +1,10 @@
-// lib/widgets/level_video_player.dart (or your file path)
-
-import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:lottie/lottie.dart';
 import 'package:operation_sunrise/audio/audio_controller.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
+import 'package:operation_sunrise/globals.dart'; // Import the global ad signal
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
@@ -35,280 +32,302 @@ class _LevelVideoPlayerState extends State<LevelVideoPlayer>
   late AudioController _audio;
 
   int _initGeneration = 0;
-  bool _isVideoInitialized = false;
-  bool _isAnimationTimePassed = false;
   bool _hasError = false;
+  bool _isLoading = true;
 
-  static const _minAnimationDuration = Duration(seconds: 2);
+  bool _wasPlayingBeforeAd = false;
+  bool _adIsShowing = false;
+  bool _autoplayPrevented = false; // Flag to remember a deferred autoplay
+
+  static const _minAnimationDuration = Duration(milliseconds: 300);
   static const _transitionDuration = Duration(milliseconds: 500);
 
   late AnimationController _loadingOpacityController;
   late Animation<double> _loadingOpacityAnimation;
   late AnimationController _videoOpacityController;
   late Animation<double> _videoOpacityAnimation;
+  late final ValueNotifier<AppLifecycleState> _lifecycleListenable;
 
   @override
   void initState() {
     super.initState();
     _initializeAnimationControllers();
-    _initializePlayer();
-    _startAnimationTimer();
-  }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _settings = context.read<SettingsController>();
     _audio = context.read<AudioController>();
+    _settings = context.read<SettingsController>();
+    _lifecycleListenable = context.read<ValueNotifier<AppLifecycleState>>();
 
-    // Remove old listeners before adding new ones to be safe.
-    _settings.autoplayOn.removeListener(_onSettingChanged);
-    _settings.loopingOn.removeListener(_onSettingChanged);
-    _settings.soundsOn.removeListener(_setPlayerVolume);
-    _audio.isMutedNotifier.removeListener(_setPlayerVolume);
+    _adIsShowing = isAdShowingNotifier.value;
 
-    // Add listeners for settings and the crucial real-time mute notifier.
-    _settings.autoplayOn.addListener(_onSettingChanged);
-    _settings.loopingOn.addListener(_onSettingChanged);
-    _settings.soundsOn.addListener(_setPlayerVolume);
+    isAdShowingNotifier.addListener(_onAdStateChanged);
+    _lifecycleListenable.addListener(_onAppLifecycleStateChanged);
     _audio.isMutedNotifier.addListener(_setPlayerVolume);
+    _settings.soundsOn.addListener(_setPlayerVolume);
+    _settings.loopingOn.addListener(_updateLoopingSetting);
+
+    _initAndCrossfade();
   }
+
+  void _onAdStateChanged() {
+    _adIsShowing = isAdShowingNotifier.value;
+
+    if (!mounted || _chewieController == null) return;
+
+    if (_adIsShowing) {
+      if (_chewieController!.isPlaying) {
+        _wasPlayingBeforeAd = true;
+        _chewieController!.pause();
+      }
+    } else {
+      // Case 1: The video was playing before, so resume it.
+      if (_wasPlayingBeforeAd) {
+        _chewieController!.play();
+        _wasPlayingBeforeAd = false;
+      }
+      // Case 2: Autoplay was blocked by the ad, so start it now.
+      else if (_autoplayPrevented) {
+        _chewieController!.play();
+        _autoplayPrevented = false;
+      }
+    }
+  }
+
+  void _onAppLifecycleStateChanged() {
+    if (!mounted || _chewieController == null) return;
+
+    final appLifecycleState = _lifecycleListenable.value;
+
+    if (appLifecycleState != AppLifecycleState.resumed) {
+      if (_chewieController!.isPlaying) {
+        _wasPlayingBeforeAd = true;
+        _chewieController!.pause();
+      }
+    } else {
+      if (_wasPlayingBeforeAd && !_adIsShowing) {
+        _chewieController!.play();
+        _wasPlayingBeforeAd = false;
+      }
+    }
+  }
+
 
   void _initializeAnimationControllers() {
     _loadingOpacityController = AnimationController(
-      vsync: this,
-      duration: _transitionDuration,
-    );
-    _loadingOpacityAnimation = CurvedAnimation(
-      parent: _loadingOpacityController,
-      curve: Curves.easeIn,
-    );
-    _videoOpacityController = AnimationController(
-      vsync: this,
-      duration: _transitionDuration,
-    );
-    _videoOpacityAnimation = CurvedAnimation(
-      parent: _videoOpacityController,
-      curve: Curves.easeIn,
-    );
-    _loadingOpacityController.forward();
+        vsync: this,
+        duration: _transitionDuration
+    )..forward();
 
-    _loadingOpacityController.addStatusListener((status) {
-      if (status == AnimationStatus.dismissed) {
-        if (_settings.autoplayOn.value &&
-            _videoPlayerController?.value.isInitialized == true) {
-          _videoPlayerController!.play();
-        }
-      }
-    });
+    _loadingOpacityAnimation = CurvedAnimation(
+        parent: _loadingOpacityController,
+        curve: Curves.easeIn
+    );
+
+    _videoOpacityController = AnimationController(
+        vsync: this,
+        duration: _transitionDuration
+    );
+
+    _videoOpacityAnimation = CurvedAnimation(
+        parent: _videoOpacityController,
+        curve: Curves.easeIn
+    );
   }
 
   @override
   void didUpdateWidget(covariant LevelVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isSolved) {
-      _videoPlayerController?.setVolume(0.0);
+
+    if (widget.isSolved != oldWidget.isSolved) {
+      _setPlayerVolume();
     }
+
     if (widget.videoPath != oldWidget.videoPath) {
       _initGeneration++;
-      _videoPlayerController?.dispose();
-      _chewieController?.dispose();
-      _chewieController = null;
+      _disposeControllers();
+      // Reset flags for the new video
+      _autoplayPrevented = false;
+      _wasPlayingBeforeAd = false;
       setState(() {
-        _isVideoInitialized = false;
-        _isAnimationTimePassed = false;
         _hasError = false;
+        _isLoading = true;
       });
       _loadingOpacityController.forward(from: 0.0);
       _videoOpacityController.reverse(from: 1.0);
-      _initializePlayer();
-      _startAnimationTimer();
+      _initAndCrossfade();
     }
   }
 
-  Future<void> _initializePlayer() async {
+  void _updateLoopingSetting() {
+    if (_videoPlayerController == null || !_videoPlayerController!.value.isInitialized) {
+      return;
+    }
+    final newLoopingValue = _settings.loopingOn.value;
+    if (_videoPlayerController!.value.isLooping != newLoopingValue) {
+      _videoPlayerController!.setLooping(newLoopingValue);
+    }
+  }
+
+  Future<void> _initAndCrossfade() async {
     final int currentGeneration = _initGeneration;
+
+    final results = await Future.wait([
+      _initializePlayer(),
+      Future.delayed(_minAnimationDuration),
+    ]);
+
+    final success = results[0] as bool;
+
+    if (currentGeneration == _initGeneration && mounted && success) {
+      setState(() {
+        _isLoading = false;
+      });
+      _loadingOpacityController.reverse();
+      _videoOpacityController.forward();
+    }
+  }
+
+  Future<bool> _initializePlayer() async {
+    final int currentGeneration = _initGeneration;
+
     try {
-      final ref = FirebaseStorage.instance.ref(widget.videoPath);
-      final url = await ref.getDownloadURL();
-      if (currentGeneration != _initGeneration || !mounted) return;
+      final url = await FirebaseStorage.instance
+          .ref(widget.videoPath)
+          .getDownloadURL();
+
+      if (currentGeneration != _initGeneration || !mounted) return false;
 
       final file = await DefaultCacheManager().getSingleFile(url);
-      await _videoPlayerController?.dispose();
-      if (currentGeneration != _initGeneration || !mounted) return;
+      if (currentGeneration != _initGeneration || !mounted) return false;
 
       _videoPlayerController = VideoPlayerController.file(file);
-      final controller = _videoPlayerController;
-      if (controller == null) return;
+      await _videoPlayerController!.initialize();
 
-      await controller.initialize();
       if (currentGeneration != _initGeneration || !mounted) {
-        controller.dispose();
-        return;
+        _videoPlayerController?.dispose();
+        return false;
       }
 
-      _setPlayerVolume(); // Set initial volume based on current settings
-      _chewieController = _createChewieController();
+      _setPlayerVolume();
+      _updateLoopingSetting();
 
-      if (currentGeneration == _initGeneration && mounted) {
-        setState(() {
-          _isVideoInitialized = true;
-          if (_isAnimationTimePassed) {
-            _loadingOpacityController.reverse();
-            _videoOpacityController.forward();
-          }
-        });
-      }
-    } catch (e) {
-      log('Error initializing video player: $e');
-      if (currentGeneration == _initGeneration && mounted) {
-        setState(() {
-          _hasError = true;
-          _loadingOpacityController.reverse();
-        });
-      }
-    }
-  }
+      if (mounted) {
+        final bool shouldAutoplay = _settings.autoplayOn.value && !_adIsShowing;
 
-  ChewieController _createChewieController() {
-    return ChewieController(
-      videoPlayerController: _videoPlayerController!,
-      autoPlay: false, // Manually controlled via animation listener
-      looping: _settings.loopingOn.value,
-      allowFullScreen: false,
-      allowPlaybackSpeedChanging: false,
-      showOptions: false,
-      showControls: true,
-      allowMuting: false, // Manually controlling this
-      draggableProgressBar: false,
-      showControlsOnInitialize: false,
-      errorBuilder: (context, errorMessage) {
-        return Center(
-          child: Text(
-            'Error playing video: $errorMessage',
-            style: const TextStyle(color: Colors.white),
-          ),
+        // If autoplay is on in settings but we're stopping it, set the flag.
+        if (_settings.autoplayOn.value && !shouldAutoplay) {
+          _autoplayPrevented = true;
+        }
+
+        _chewieController = ChewieController(
+          videoPlayerController: _videoPlayerController!,
+          autoPlay: shouldAutoplay,
+          looping: _settings.loopingOn.value,
+          allowFullScreen: false,
+          allowPlaybackSpeedChanging: false,
+          showOptions: false,
+          showControls: true,
+          allowMuting: false,
+          draggableProgressBar: false,
+          showControlsOnInitialize: false,
         );
-      },
-    );
-  }
-
-  /// Sets player volume based on BOTH in-app settings and system mute status.
-  void _setPlayerVolume() {
-    if (_videoPlayerController?.value.isInitialized != true) {
-      return;
-    }
-
-    // Mute if the in-app sound setting is off OR if the system is muted.
-    final bool shouldMute =
-        !_settings.soundsOn.value || _audio.isMutedNotifier.value;
-    final double newVolume = shouldMute ? 0.0 : 1.0;
-
-    _videoPlayerController!.setVolume(newVolume);
-  }
-
-  /// Handles changes to autoplay or looping settings.
-  void _onSettingChanged() {
-    if (_chewieController == null ||
-        _videoPlayerController?.value.isInitialized != true) {
-      return;
-    }
-    final newAutoplayValue = _settings.autoplayOn.value;
-    final newLoopingValue = _settings.loopingOn.value;
-    if (_chewieController!.autoPlay == newAutoplayValue &&
-        _chewieController!.looping == newLoopingValue) {
-      return;
-    }
-    final oldChewieController = _chewieController;
-    setState(() {
-      _chewieController = _createChewieController();
-    });
-    oldChewieController?.dispose();
-    if (oldChewieController?.autoPlay != newAutoplayValue) {
-      if (newAutoplayValue) {
-        _videoPlayerController!.play();
-      } else {
-        _videoPlayerController!.pause();
       }
-    }
-  }
 
-  void _startAnimationTimer() {
-    Future.delayed(_minAnimationDuration, () {
+      return true;
+    } catch (e) {
       if (mounted) {
         setState(() {
-          _isAnimationTimePassed = true;
-          if (_isVideoInitialized) {
-            _loadingOpacityController.reverse();
-            _videoOpacityController.forward();
-          }
+          _hasError = true;
+          _isLoading = false;
         });
       }
-    });
+      return false;
+    }
+  }
+
+  void _setPlayerVolume() {
+    if (_videoPlayerController == null ||
+        !_videoPlayerController!.value.isInitialized) {
+      return;
+    }
+
+    if (widget.isSolved) {
+      _videoPlayerController!.setVolume(0.0);
+      return;
+    }
+
+    final shouldMute = !_settings.soundsOn.value || _audio.isMutedNotifier.value;
+    _videoPlayerController!.setVolume(shouldMute ? 0.0 : 1.0);
+  }
+
+  void _disposeControllers() {
+    _chewieController?.dispose();
+    _chewieController = null;
+    _videoPlayerController?.dispose();
+    _videoPlayerController = null;
   }
 
   @override
   void dispose() {
-    // Clean up all listeners to prevent memory leaks
-    _settings.autoplayOn.removeListener(_onSettingChanged);
-    _settings.loopingOn.removeListener(_onSettingChanged);
-    _settings.soundsOn.removeListener(_setPlayerVolume);
+    isAdShowingNotifier.removeListener(_onAdStateChanged);
+    _lifecycleListenable.removeListener(_onAppLifecycleStateChanged);
     _audio.isMutedNotifier.removeListener(_setPlayerVolume);
+    _settings.soundsOn.removeListener(_setPlayerVolume);
+    _settings.loopingOn.removeListener(_updateLoopingSetting);
 
     _initGeneration++;
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
+
+    _disposeControllers();
     _loadingOpacityController.dispose();
     _videoOpacityController.dispose();
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_hasError) {
-      return const Center(
-        child: Icon(Icons.error, color: Colors.red, size: 48),
-      );
-    }
-    final bool isVideoReady = _isVideoInitialized && _isAnimationTimePassed;
+    return ValueListenableBuilder<bool>(
+      valueListenable: isAdShowingNotifier,
+      builder: (context, isAdShowing, child) {
+        if (isAdShowing) {
+          return const SizedBox.shrink();
+        }
+        return child!;
+      },
+      child: Builder(
+        builder: (context) {
+          if (_hasError) {
+            return const Center(
+                child: Icon(Icons.error_outline, color: Colors.red, size: 48));
+          }
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        if (_chewieController != null && isVideoReady)
-          FadeTransition(
-            opacity: _videoOpacityAnimation,
-            child: Chewie(controller: _chewieController!),
-          ),
-        if (!isVideoReady || _loadingOpacityController.value > 0)
-   IgnorePointer(
-            ignoring: isVideoReady,
-            child: FadeTransition(
-              opacity: _loadingOpacityAnimation,
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                // The Center widget was removed and Stack now fills the AspectRatio.
-                child: Stack(
-                  alignment: Alignment.center,
-                  // This property makes the Stack's children fill its bounds.
-                  fit: StackFit.expand, 
-                  children: <Widget>[
-                    Image.asset(
-                      'assets/images/cinema_screen.jpg',
-                      // BoxFit.cover will now correctly fill the 16:9 area.
-                      fit: BoxFit.cover,
-                    ),
-                    Lottie.asset(
-                      'assets/animation/panda_red.json',
-                      width: 300,
-                      height: 300,
-                    ),
-                  ],
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              if (_chewieController != null && !_isLoading)
+                FadeTransition(
+                  opacity: _videoOpacityAnimation,
+                  child: Chewie(controller: _chewieController!),
                 ),
-              ),
-            ),
-            ),
-      ],
+              if (_isLoading)
+                FadeTransition(
+                  opacity: _loadingOpacityAnimation,
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      alignment: Alignment.center,
+                      children: [
+                        Image.asset('assets/images/cinema_screen.jpg',
+                            fit: BoxFit.cover),
+                        Lottie.asset('assets/animation/panda_red.json'),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

@@ -1521,16 +1521,16 @@ PODS:
     - Flutter
     - FlutterMacOS
   - PromisesObjC (2.4.0)
-  - purchases_flutter (9.5.0):
+  - purchases_flutter (9.6.2):
     - Flutter
-    - PurchasesHybridCommon (= 17.5.0)
-  - PurchasesHybridCommon (17.5.0):
-    - RevenueCat (= 5.37.0)
+    - PurchasesHybridCommon (= 17.7.0)
+  - PurchasesHybridCommon (17.7.0):
+    - RevenueCat (= 5.39.0)
   - real_volume (0.0.1):
     - Flutter
     - Mute (~> 0.6.0)
   - RecaptchaInterop (101.0.0)
-  - RevenueCat (5.37.0)
+  - RevenueCat (5.39.0)
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -1720,18 +1720,18 @@ SPEC CHECKSUMS:
   package_info_plus: c0502532a26c7662a62a356cebe2692ec5fe4ec4
   path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
-  purchases_flutter: 7beb863d2a55c97a68cc96f22b4f9f1078bae680
-  PurchasesHybridCommon: 7d56bf25c61e2c8a62e5b23d7bf16b5060420fe9
+  purchases_flutter: 0b5c70044173dfe068865233be41db78723481b2
+  PurchasesHybridCommon: 6bc96162fb0c061e1980f474be618c088cfd1428
   real_volume: 6d09deeabb06963275fa8df0fb1616a5886363d6
   RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba
-  RevenueCat: fc4ad171bbfbfb974210f0b26ce470b007be111f
+  RevenueCat: 4743a5eee0004e1c03eabeb3498818f902a5d622
   shared_preferences_foundation: fcdcbc04712aee1108ac7fda236f363274528f78
   sound_effect: cfdb0f3d170fc2f468c5b424bc5fa4533299e571
   sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
   url_launcher_ios: 5334b05cef931de560670eeae103fd3e431ac3fe
   video_player_avfoundation: 7c6c11d8470e1675df7397027218274b6d2360b3
   wakelock_plus: 76957ab028e12bfa4e66813c99e46637f367fc7e
-  webview_flutter_wkwebview: a4af96a051138e28e29f60101d094683b9f82188
+  webview_flutter_wkwebview: 29eb20d43355b48fe7d07113835b9128f84e3af4
 
 PODFILE CHECKSUM: 53a6aebc29ccee84c41f92f409fc20cd4ca011f1
 
