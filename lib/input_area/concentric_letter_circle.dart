@@ -32,6 +32,7 @@ class ConcentricLetterCircle extends StatefulWidget {
   final VoidCallback onSymbolsTapped;
   final VoidCallback onSpaceTapped;
   final VoidCallback onHintTapped;
+  final VoidCallback onPremiumTapped;
   final String solutionString;
   final String currentUserInput;
 
@@ -46,6 +47,7 @@ class ConcentricLetterCircle extends StatefulWidget {
     required this.onHintTapped,
     required this.solutionString,
     required this.currentUserInput,
+    required this.onPremiumTapped,
   });
 
   @override
@@ -285,6 +287,7 @@ class _ConcentricLetterCircleState extends State<ConcentricLetterCircle> {
           onSymbolsTapped: widget.onSymbolsTapped,
           onSpaceTapped: widget.onSpaceTapped,
           onHintTapped: widget.onHintTapped,
+          onPremiumTapped: widget.onPremiumTapped
         );
 
         // If layout is not calculated yet, do it once after the first frame.
@@ -587,7 +590,7 @@ class _LetterCircleButtonState extends State<_LetterCircleButton>
 
 // ~~~ WIDGET 3: The Arc Button Controller ~~~
 
-enum _TappedArc { none, symbols, shift, space, hint }
+enum _TappedArc { none, symbols, shift, space, hint, skip }
 
 class ArcButtonController extends StatefulWidget {
   final double radius;
@@ -596,6 +599,7 @@ class ArcButtonController extends StatefulWidget {
   final VoidCallback onSymbolsTapped;
   final VoidCallback onSpaceTapped;
   final VoidCallback onHintTapped;
+  final VoidCallback onPremiumTapped;
 
   const ArcButtonController({
     super.key,
@@ -605,6 +609,7 @@ class ArcButtonController extends StatefulWidget {
     required this.onSymbolsTapped,
     required this.onSpaceTapped,
     required this.onHintTapped,
+    required this.onPremiumTapped,
   });
 
   @override
@@ -759,13 +764,13 @@ class _ArcButtonControllerState extends State<ArcButtonController>
         }
         return;
       }
-      
+
       // *** NEW LOGIC: If hint is NOT revealed, check for subscription ***
       if (money.isSubscribed()) {
         // User is subscribed, so reveal the hint for free.
         HapticFeedback.lightImpact();
         game.revealHintByIndex(hintIndex, playSound: true);
-        
+
         // Trigger the tap feedback animation.
         setState(() {
           _tappedArc = tappedArc;
@@ -793,9 +798,7 @@ class _ArcButtonControllerState extends State<ArcButtonController>
         break;
       case _TappedArc.hint:
         // This is the premium button itself
-        action = money.isSubscribed()
-            ? () {}
-            : money.purchaseSubscription;
+        action = widget.onPremiumTapped;
         break;
       default:
         return;
@@ -935,21 +938,33 @@ class _ArcPainter extends CustomPainter {
             ...hintArcProperties[i],
             'text': hint.label.toUpperCase(),
             'subtitle': isSubscribed ? 'REVEAL NOW' : 'Watch Ad',
-            'baseColor': isSubscribed ? Color.fromARGB(255, 45, 0, 71) : baseRed,
-            'highlightColor': isSubscribed ? Color.fromARGB(255, 98, 37, 134) : highlightRed,
+            'baseColor': isSubscribed
+                ? Color.fromARGB(255, 45, 0, 71)
+                : baseRed,
+            'highlightColor': isSubscribed
+                ? Color.fromARGB(255, 98, 37, 134)
+                : highlightRed,
           });
         }
       }
     }
-    
-    final productInfo = moneyController.getProductFriendlyInfo();
-    final productDescription = moneyController.getDescriptionOfProduct();
+
+    // 1. Get subscription stat
+
+    // 2. Add the Skip Section
     arcSections.add({
-      'text': isSubscribed ? 'You own premium!' : (productInfo ?? 'GET PREMIUM'),
-      'subtitle': isSubscribed ? null : productDescription,
+      // Text changes based on subscription
+      'text': isSubscribed ? 'SKIP LEVEL' : 'WATCH AD',
+      'subtitle': isSubscribed ? 'INSTANTLY' : 'TO SKIP >>',
+
       'startAngle': (55 * pi / 36.0),
       'flipText': false,
+
+      // >>> IMPORTANT: Change this to a new enum value (e.g. _TappedArc.skip)
+      // so you can detect it in the onTap handler
       'arcType': _TappedArc.hint,
+
+      // Colors: Green if Premium, Amber/Orange if Free (Ad)
       'baseColor': isSubscribed ? const Color.fromARGB(255, 86, 0, 136) : baseGreen,
       'highlightColor': isSubscribed ? const Color.fromARGB(255, 51, 0, 154) : highlightGreen,
     });
@@ -1073,7 +1088,7 @@ class _ArcPainter extends CustomPainter {
 
     // --- 2. Determine Final Font Size ---
     TextStyle effectiveStyle = style;
-    const double arcTextPaddingFactor = 0.85; 
+    const double arcTextPaddingFactor = 0.85;
 
     final double targetAngle = sweepAngle * arcTextPaddingFactor;
 

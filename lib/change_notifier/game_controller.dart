@@ -12,7 +12,7 @@ class GameController extends ChangeNotifier {
   final LevelInfo levelInfo;
   final AudioController audioController;
   final SettingsController settingsController; // 2. Change dependency
-  
+
   final String displaySolution;
   final List<String> _userInput = [];
   late final int puzzleLength;
@@ -22,8 +22,11 @@ class GameController extends ChangeNotifier {
 
   List<Hint> availableHints = [];
 
-  GameController({required this.levelInfo, required this.audioController, required this.settingsController})
-    : displaySolution = levelInfo.name {
+  GameController({
+    required this.levelInfo,
+    required this.audioController,
+    required this.settingsController,
+  }) : displaySolution = levelInfo.name {
     puzzleLength = displaySolution.replaceAll(' ', '').length;
     _initializeHints();
     _trackLevelStart();
@@ -97,11 +100,8 @@ class GameController extends ChangeNotifier {
     if (_levelStartTime != null) {
       timeTakenSeconds = DateTime.now().difference(_levelStartTime!).inSeconds;
     }
-    
-    await trackLevelFinish(
-      levelInfo.levelNumber, 
-      timeTakenSeconds
-    );
+
+    await trackLevelFinish(levelInfo.levelNumber, timeTakenSeconds);
   }
 
   void playWinSound() {
@@ -131,13 +131,24 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  void skipLevel() {
+    if (_isSolved) return;
+
+    // Track the skip event specifically (optional, but good for analytics)
+    FirebaseAnalytics.instance.logEvent(
+      name: 'level_skipped',
+      parameters: {'level_number': levelInfo.levelNumber.toString()},
+    );
+
+    _isSolved = true;
+    notifyListeners();
+  }
+
   Future<void> trackLevelBegin(int? levelNumber) async {
     if (levelNumber == null) return;
     await FirebaseAnalytics.instance.logEvent(
       name: 'level_begin',
-      parameters: {
-        'level_number': levelNumber,
-      },
+      parameters: {'level_number': levelNumber.toString()},
     );
   }
 
@@ -145,11 +156,7 @@ class GameController extends ChangeNotifier {
     if (levelNumber == null) return;
     await FirebaseAnalytics.instance.logEvent(
       name: 'level_finish',
-      parameters: {
-        'level_number': levelNumber,
-        'time_taken': timeTaken,
-      },
+      parameters: {'level_number': levelNumber.toString(), 'time_taken': timeTaken},
     );
   }
-  
 }

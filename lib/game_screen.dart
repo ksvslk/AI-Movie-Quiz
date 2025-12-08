@@ -1,6 +1,7 @@
 // game_screen.dart
 
 import 'dart:async';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:lottie/lottie.dart';
@@ -9,12 +10,14 @@ import 'package:operation_sunrise/change_notifier/ads_controller.dart';
 import 'package:operation_sunrise/change_notifier/game_controller.dart';
 import 'package:operation_sunrise/change_notifier/level_controller.dart';
 import 'package:operation_sunrise/change_notifier/money_controller.dart';
+import 'package:operation_sunrise/constants.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/input_area/concentric_letter_circle.dart';
 import 'package:operation_sunrise/data/level_info.dart';
 import 'package:operation_sunrise/menu/menu_drawer.dart';
 import 'dart:math';
 import 'package:provider/provider.dart';
+import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 import 'video/level_video_player.dart';
 
 class GameScreen extends StatefulWidget {
@@ -44,7 +47,7 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  Future<void> _goToNextLevel() async {
+  Future<void> _goToNextLevel({bool skipInterstital = false}) async {
     if (!mounted) return;
 
     final levelController = context.read<LevelController>();
@@ -54,7 +57,9 @@ class _GameScreenState extends State<GameScreen> {
     final adsController = context.read<AdsController>();
     final settingsController = context.read<SettingsController>();
 
-    if (await settingsController.shouldShowInterstitialAd() &&
+    // Modified Logic: Check skipInterstital flag
+    if (!skipInterstital && 
+        await settingsController.shouldShowInterstitialAd() &&
         !moneyController.isSubscribed() &&
         adsController.isInterstitialAvailable()) {
       adsController.showInterstitialAd();
@@ -156,6 +161,62 @@ class _GameScreenState extends State<GameScreen> {
         },
       );
     }
+  }
+  
+  // >>> ADDED: Core Logic for Skip Button <<<
+  Future<void> _onSkipLevelTapped() async {
+    final money = context.read<MoneyController>();
+    final ads = context.read<AdsController>();
+    
+    // 1. If Premium, skip immediately
+    if (money.isSubscribed()) {
+      _performSkip();
+      return;
+    }
+
+    // 2. Check Remote Config for Paywall Order
+    final remoteConfig = FirebaseRemoteConfig.instance;
+    // Default to true if not set, or false, depending on your preference
+    bool showPaywallFirst = remoteConfig.getBool(C.showPaywallBeforeAdsTag); 
+
+    if (showPaywallFirst) {
+      try {
+        // Open RevenueCat Paywall
+        // Note: usage depends on your specific paywall setup, 
+        // using the default native UI presentation here:
+        await RevenueCatUI.presentPaywallIfNeeded("premium_entitlement");
+        
+        // Wait for paywall to close, then check status again
+        if (money.isSubscribed()) {
+          _performSkip();
+          return;
+        }
+      } catch (e) {
+        debugPrint("Error showing paywall: $e");
+      }
+    }
+
+    // 3. Show Rewarded Ad if still not subscribed
+    if (ads.isAdAvailable()) {
+      ads.showRewardedAd(() {
+        // Success callback
+        _performSkip();
+      });
+    } else {
+      // Fallback if no ad is available
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No ad available to skip level right now.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      ads.reloadRewardedAd();
+    }
+  }
+
+  void _performSkip() {
+    _gameController.skipLevel(); // Mark as solved in controller
+    _goToNextLevel(skipInterstital: true); // Move next, avoiding double ads
   }
 
   void _onNewLevelAdded() {
@@ -372,6 +433,7 @@ class _GameScreenState extends State<GameScreen> {
                                               controller.onClearAllTapped,
                                           onSymbolsTapped: () =>
                                               _onHintTapped(0),
+                                          onPremiumTapped: _onSkipLevelTapped,
                                           onShiftTapped: () => _onHintTapped(1),
                                           onSpaceTapped: () => _onHintTapped(2),
                                           onHintTapped: () {},

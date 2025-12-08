@@ -10,9 +10,12 @@ class C {
   static const String dayBeforeReviewTag = "DAY_BEFORE_REVIEW";
   static const String testAdsTag = "TEST_ADS";
 
+  static const String showPaywallBeforeAdsTag = 'SHOW_PAYWALL_BEFORE_ADS';
+
   static const String premiumInfoText = "PREMIUM_INFO_TEXT";
   static const String debugVersionTag = "DEBUG_VERSION";
   static const String eulaAppleLink = "https://www.indest.ee/eula/";
   static const String privacyLink = "https://www.indest.ee/privacy-policy/";
+  static const String contactUs = "mailto:indrek@indest.ee";
   static const String lastPlayedLevelKey = 'lastPlayedLevel';
 }

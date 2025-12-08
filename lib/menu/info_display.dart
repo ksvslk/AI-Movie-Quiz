@@ -51,6 +51,7 @@ class _InfoDisplayState extends State<InfoDisplay> {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -87,9 +88,14 @@ class _InfoDisplayState extends State<InfoDisplay> {
                   ),
                 ),
               ],
-              InkWell(
+          
+         
+            ],
+          ),
+                        InkWell(
                 onTap: () => _launchUrl(C.privacyLink),
                 child: Text(
+                  textAlign: TextAlign.start,
                   'Privacy Policy',
                   style: TextStyle(
                     fontSize: 12,
@@ -99,8 +105,19 @@ class _InfoDisplayState extends State<InfoDisplay> {
                   ),
                 ),
               ),
-            ],
-          ),
+              InkWell(
+                onTap: () => _launchUrl(C.contactUs),
+                child: Text(
+                  textAlign: TextAlign.start,
+                  'Contact Us',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'EpundaSlab',
+                    color: Theme.of(context).colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
           if ((Platform.isIOS || Platform.isMacOS)) ...[
             const SizedBox(height: 16),
             InkWell(

@@ -7,6 +7,7 @@ import 'package:operation_sunrise/change_notifier/money_controller.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/menu/info_display.dart';
 import 'package:provider/provider.dart';
+import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
 class MenuDrawer extends StatefulWidget {
   const MenuDrawer({super.key});
@@ -124,14 +125,15 @@ class _MenuDrawerState extends State<MenuDrawer> {
                     leading: const Icon(Icons.diamond),
                     title: money.isSubscribed()
                         ? const Text("Premium Activated")
-                        : Text(money.getProductFriendlyInfo() ?? "..."),
+                        : Text("Upgrade Now"),
                     subtitle: money.isSubscribed()
                         ? null
-                        : Text(money.getDescriptionOfProduct()),
+                        : Text("Hints. Skip. No Ads."),
                     onTap: money.isSubscribed()
                         ? null
                         : () {
-                            money.purchaseSubscription();
+                            RevenueCatUI.presentPaywall(displayCloseButton: true);
+                            //money.purchaseSubscription();
                           },
                   );
                 },

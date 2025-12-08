@@ -91,6 +91,7 @@ Future<void> setUpRemoteConfig() async {
     C.minutesBeforeReviewTag: 15,
     C.testAdsTag: false,
     C.premiumInfoText: "All hints + no ads",
+    C.showPaywallBeforeAdsTag: true,
   });
   remoteConfig.onConfigUpdated.listen((event) async {
     await remoteConfig.activate();
