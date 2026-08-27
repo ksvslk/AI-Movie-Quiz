@@ -1,9 +1,13 @@
 // controllers/level_controller.dart
 
 import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 import 'package:operation_sunrise/data/settings_controller.dart';
 import 'package:operation_sunrise/data/level_info.dart';
@@ -93,11 +97,12 @@ class LevelController extends ChangeNotifier {
             }
 
             // (The rest of your method remains the same)
-            if (!snapshot.metadata.isFromCache) {
-              if (_processPendingLevel()) {
-              } else {
-                _findInitialLevel();
-              }
+            // A pending notification-tap navigation always wins — the cached
+            // level list is complete enough to navigate. The old !isFromCache
+            // gate waited for a server snapshot that never fires when the
+            // data is unchanged, so cold-start taps landed on the last
+            // played level instead.
+            if (_processPendingLevel()) {
             } else {
               _findInitialLevel();
             }
@@ -154,6 +159,18 @@ class LevelController extends ChangeNotifier {
       (level) => level.levelNumber == completedLevelNumber,
     );
 
+    // Progress write-through: lets the agent see how far each player got
+    // (who is stuck, who finished the fresh content). Merge into the same
+    // per-uid doc the push token lives in; best-effort.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && !kIsWeb) {
+      final col = Platform.isIOS ? 'fcmTokensIos' : 'fcmTokensAndroid';
+      FirebaseFirestore.instance.collection(col).doc(uid).set({
+        'lastLevel': completedLevelNumber,
+        'lastLevelAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).catchError((_) {});
+    }
+
     // Check if the completed level was found and if a next level exists.
     if (completedIndex != -1 && completedIndex + 1 < levels.length) {
       // IMPORTANT: Update the master state to the new index.
@@ -179,6 +196,23 @@ class LevelController extends ChangeNotifier {
       _handleNotificationTap(initialMessage);
     }
 
+    // Cold-start fallback: the plugin's initial message is racy (another
+    // getInitialMessage call may have consumed it, or the tap event fired
+    // while the engine was still booting). MainActivity captured levelNumber
+    // straight from the launch intent; fetch it here, where the platform
+    // channel is guaranteed to be registered.
+    try {
+      final n = await const MethodChannel('stagenator/claim')
+          .invokeMethod<String>('getPendingLevelNumber');
+      final levelNumber = n == null ? null : int.tryParse(n);
+      if (levelNumber != null) {
+        _pendingLevelNumberToOpen = levelNumber;
+        if (_processPendingLevel()) notifyListeners();
+      }
+    } catch (_) {
+      // iOS / channel unavailable — plugin paths handle what they can
+    }
+
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {});
     await messaging.subscribeToTopic('new_levels');
@@ -190,6 +224,10 @@ class LevelController extends ChangeNotifier {
       final levelNumber = int.tryParse(levelNumberString);
       if (levelNumber != null) {
         _pendingLevelNumberToOpen = levelNumber;
+        // Consume immediately when the level list is already loaded — the
+        // snapshot listener only runs on data changes, so a tap while the
+        // app is alive would otherwise never navigate.
+        if (_processPendingLevel()) notifyListeners();
       }
     }
   }

@@ -13,6 +13,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:operation_sunrise/app/auth_gate.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -20,6 +22,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Your App's specific imports
 import 'package:operation_sunrise/firebase_options.dart';
@@ -34,6 +37,61 @@ import 'package:operation_sunrise/audio/audio_controller.dart';
 
 // --- NEW: Moved from AuthGate ---
 /// Tries to sign in the user anonymously with an exponential backoff retry strategy.
+/// Tier-1 identity link: tag analytics with our own pseudonymous id (the
+/// Firebase anonymous-auth uid — no PII) and register this install's push
+/// token keyed by that uid, so personal code delivery can reach it.
+Future<void> _linkIdentity() async {
+  if (kIsWeb) return;
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+  try {
+    await FirebaseAnalytics.instance.setUserId(id: user.uid);
+  } catch (e) {
+    dev.log('setUserId failed: $e');
+  }
+  final info = await PackageInfo.fromPlatform();
+  Future<void> save(String? token) async {
+    if (token == null) return;
+    final col = Platform.isIOS ? 'fcmTokensIos' : 'fcmTokensAndroid';
+    try {
+      await FirebaseFirestore.instance.collection(col).doc(user.uid).set({
+        'token': token,
+        'appVersion': info.version,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      dev.log('push token registration failed: $e');
+    }
+  }
+
+  FirebaseMessaging.instance.getToken().then(save);
+  FirebaseMessaging.instance.onTokenRefresh.listen(save);
+
+  // Keep "last seen" honest for long-lived processes: a player who never
+  // cold-starts would otherwise look stale. Throttled to once per hour.
+  DateTime? lastTouch;
+  WidgetsBinding.instance.addObserver(
+    _OnResume(() {
+      final now = DateTime.now();
+      if (lastTouch != null &&
+          now.difference(lastTouch!) < const Duration(hours: 1)) {
+        return;
+      }
+      lastTouch = now;
+      FirebaseMessaging.instance.getToken().then(save);
+    }),
+  );
+}
+
+class _OnResume extends WidgetsBindingObserver {
+  _OnResume(this.onResume);
+  final void Function() onResume;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) onResume();
+  }
+}
+
 Future<void> signInAnonymouslyWithRetry() async {
   if (FirebaseAuth.instance.currentUser != null) {
     dev.log('User already signed in.');
@@ -113,6 +171,79 @@ Future<void> initPlatformState() async {
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
+/// Stagenator code-drop pushes carry a claimUrl in their data payload.
+/// Open it when the user taps the notification — whether the tap cold-starts
+/// the app or brings it back from the background. Without this the tap just
+/// opens the app and the claim link is silently dropped.
+void _handleClaimUrlTaps() {
+  // Both tap hooks can deliver the SAME message on a cold start (verified on
+  // device: two browser launches). Dedupe by URL within a short window.
+  String? lastUrl;
+  DateTime? lastAt;
+  // Replay guard: reopening the app re-delivers the tap intent (task root)
+  // and the plugin re-fires from its cache. Native keeps a persisted set of
+  // consumed message ids (survives engine restarts); the session set covers
+  // iOS, where the native channel does not exist.
+  const nativeGuard = MethodChannel('stagenator/claim');
+  final sessionIds = <String>{};
+  Future<void> open(RemoteMessage? message) async {
+    final id = message?.messageId;
+    if (kDebugMode && message != null) {
+      debugPrint('sgclaim open: id=$id data=${message.data}');
+    }
+    if (id != null) {
+      if (!sessionIds.add(id)) return; // duplicate within this session
+      bool fresh = true;
+      try {
+        fresh = await nativeGuard.invokeMethod<bool>('consume', id) ?? true;
+      } catch (_) {
+        // iOS / channel unavailable: session set + URL window suffice
+      }
+      if (!fresh) return; // already handled in an earlier session
+    }
+    final url = message?.data['claimUrl'];
+    if (url is String && url.startsWith('https://')) {
+      final now = DateTime.now();
+      if (url == lastUrl &&
+          lastAt != null &&
+          now.difference(lastAt!) < const Duration(seconds: 15)) {
+        return; // same tap delivered twice
+      }
+      lastUrl = url;
+      lastAt = now;
+      try {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } catch (e) {
+        dev.log('claimUrl launch failed: $e', level: Level.WARNING.value);
+      }
+    }
+  }
+
+  FirebaseMessaging.instance.getInitialMessage().then(open);
+  FirebaseMessaging.onMessageOpenedApp.listen(open);
+
+  // Native fallback: MainActivity captures claimUrl from the launch intent on
+  // every entry path, closing the plugin's lost-event race (process alive,
+  // activity destroyed, engine still booting). The dedupe guard above makes
+  // this safe to run alongside the plugin paths.
+  const nativeChannel = MethodChannel('stagenator/claim');
+  Future<void> openRaw(dynamic url) async {
+    if (kDebugMode) debugPrint('sgclaim native: $url');
+    if (url is String) {
+      await open(RemoteMessage(data: {'claimUrl': url}));
+    }
+  }
+
+  nativeChannel.setMethodCallHandler((call) async {
+    if (call.method == 'claimUrl') await openRaw(call.arguments);
+  });
+  nativeChannel
+      .invokeMethod<String>('getPendingClaimUrl')
+      .then(openRaw)
+      .catchError((_) => null); // channel absent on iOS — plugin paths suffice
+}
+
+
 // --- Main App Entry Point ---
 
 Future<void> main() async {
@@ -155,9 +286,15 @@ Future<void> main() async {
     // We will let the app continue to run. The AuthGate will see
     // that `currentUser` is null and show the error screen.
   }
+  await _linkIdentity();
   // --- END NEW SECTION ---
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  _handleClaimUrlTaps();
+  if (kDebugMode) {
+    // test aid only: surface this install's FCM token for console test pushes
+    FirebaseMessaging.instance.getToken().then((t) => debugPrint('FCM token: $t'));
+  }
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
   );
