@@ -26,3 +26,5 @@ Sounds and animations are not included.
 - `flutter analyze` reports deprecation and unused-code warnings.
 
 © 2025–2026 Indest OÜ. All rights reserved.
+
+Files with the Flutter project authors' header come from [Flutter's casual games template](https://github.com/flutter/games) and keep its BSD license ([third_party/flutter-games/LICENSE](third_party/flutter-games/LICENSE)). The fonts use the SIL Open Font License.
